@@ -1,12 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Cafe, INITIAL_CAMERA } from '../lib/data';
 import { colors } from '../lib/theme';
 import { MockMap } from './MockMap';
 
-// 지도 마커 이미지 (#3A8A63 / 만석 회색) — assets/images에서 생성된 PNG
+// 지도 마커 (#3A8A63 여유 / 회색 만석 / 빨강 저장) — 얇은 흰 테두리
 const MARKER_AVAILABLE = require('../../assets/images/marker-available.png');
 const MARKER_FULL = require('../../assets/images/marker-full.png');
+const MARKER_SAVED = require('../../assets/images/marker-saved.png');
 
 let NaverMap: any = null;
 try {
@@ -25,21 +33,43 @@ try {
   ExpoLocation = null;
 }
 
+export type CafeMapHandle = {
+  moveToMyLocation: () => Promise<boolean>;
+};
+
 /**
  * 카페 지도. development build에서는 네이버 지도 SDK,
  * Expo Go에서는 목업 지도를 렌더링한다.
+ * 저장(즐겨찾기)한 카페는 빨간 마커로 표시.
+ *
+ * 현위치 버튼은 네이티브 UI 대신 홈에서 커스텀 배치
+ * (바텀시트와 겹치지 않도록).
  */
-export function CafeMap({
-  cafes,
-  onPressMarker,
-  onMapInteract,
-}: {
-  cafes: Cafe[];
-  onPressMarker?: (cafe: Cafe) => void;
-  /** 지도를 탭하거나 제스처로 움직였을 때 호출 (바텀시트 숨김용) */
-  onMapInteract?: () => void;
-}) {
+export const CafeMap = forwardRef<
+  CafeMapHandle,
+  {
+    cafes: Cafe[];
+    /** 저장한 카페 id — 빨간 마커 */
+    bookmarkedIds?: string[];
+    onPressMarker?: (cafe: Cafe) => void;
+    /** 지도를 탭하거나 제스처로 움직였을 때 호출 (바텀시트 숨김용) */
+    onMapInteract?: () => void;
+    /** 바텀시트에 가려지지 않게 UI 컨트롤을 올릴 하단 여백(px) */
+    bottomControlsInset?: number;
+  }
+>(function CafeMap(
+  {
+    cafes,
+    bookmarkedIds = [],
+    onPressMarker,
+    onMapInteract,
+    bottomControlsInset = 168,
+  },
+  ref
+) {
   const [locationGranted, setLocationGranted] = useState(false);
+  const savedSet = useMemo(() => new Set(bookmarkedIds), [bookmarkedIds]);
+  const mapRef = useRef<any>(null);
 
   useEffect(() => {
     if (!NaverMap || !ExpoLocation) return;
@@ -50,10 +80,45 @@ export function CafeMap({
       .catch(() => {});
   }, []);
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      moveToMyLocation: async () => {
+        if (!ExpoLocation) return false;
+        try {
+          const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
+          if (status !== 'granted') return false;
+          setLocationGranted(true);
+          const pos = await ExpoLocation.getCurrentPositionAsync({
+            accuracy: ExpoLocation.Accuracy?.Balanced ?? 3,
+          });
+          const { latitude, longitude } = pos.coords;
+          mapRef.current?.animateCameraTo?.({
+            latitude,
+            longitude,
+            zoom: 15,
+            duration: 450,
+          });
+          // Follow 모드가 있으면 함께 켜 현위치 표시 유지
+          mapRef.current?.setLocationTrackingMode?.('Follow');
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    }),
+    []
+  );
+
   if (!NaverMap) {
     return (
       <View style={{ flex: 1 }} onTouchEnd={onMapInteract}>
-        <MockMap cafes={cafes} onPressMarker={onPressMarker} showLabels={false} />
+        <MockMap
+          cafes={cafes}
+          bookmarkedIds={bookmarkedIds}
+          onPressMarker={onPressMarker}
+          showLabels={false}
+        />
         <View style={styles.fallbackBanner}>
           <Text style={styles.fallbackText}>
             Expo Go 미리보기 · 네이버 지도는 development build에서 표시돼요
@@ -64,14 +129,19 @@ export function CafeMap({
   }
 
   const { NaverMapView, NaverMapMarkerOverlay } = NaverMap;
+  const inset = Math.max(0, bottomControlsInset);
 
   return (
     <NaverMapView
+      ref={mapRef}
       style={{ flex: 1 }}
       initialCamera={INITIAL_CAMERA}
-      isShowLocationButton={locationGranted}
+      // 홈에서 커스텀 현위치 버튼 사용 (시트와 겹침 방지)
+      isShowLocationButton={false}
       isShowZoomControls={false}
       logoAlign="BottomRight"
+      logoMargin={{ bottom: inset, right: 12 }}
+      mapPadding={{ bottom: inset }}
       locale="ko"
       onTapMap={() => onMapInteract?.()}
       onCameraChanged={(e: { reason?: string }) => {
@@ -79,7 +149,9 @@ export function CafeMap({
       }}
     >
       {cafes.map((cafe) => {
+        const saved = savedSet.has(cafe.id);
         const full = cafe.seatsAvailable <= 0;
+        const image = saved ? MARKER_SAVED : full ? MARKER_FULL : MARKER_AVAILABLE;
         return (
           <NaverMapMarkerOverlay
             key={cafe.id}
@@ -88,7 +160,7 @@ export function CafeMap({
             anchor={{ x: 0.5, y: 0.5 }}
             width={16}
             height={16}
-            image={full ? MARKER_FULL : MARKER_AVAILABLE}
+            image={image}
             caption={{
               text: cafe.name,
               textSize: 12,
@@ -96,9 +168,15 @@ export function CafeMap({
               haloColor: '#F4F3EC',
             }}
             subCaption={{
-              text: full ? '만석' : `여유 ${cafe.seatsAvailable}석`,
+              text: saved
+                ? full
+                  ? '저장 · 만석'
+                  : `저장 · 여유 ${cafe.seatsAvailable}석`
+                : full
+                  ? '만석'
+                  : `여유 ${cafe.seatsAvailable}석`,
               textSize: 10,
-              color: full ? '#C4574C' : '#3E7A52',
+              color: saved ? '#C4574C' : full ? '#C4574C' : '#3E7A52',
               haloColor: '#FFFFFF',
             }}
             onTap={() => onPressMarker?.(cafe)}
@@ -107,7 +185,7 @@ export function CafeMap({
       })}
     </NaverMapView>
   );
-}
+});
 
 const styles = StyleSheet.create({
   fallbackBanner: {

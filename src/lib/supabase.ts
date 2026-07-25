@@ -36,4 +36,5 @@ export type CafeRow = {
   hours_weekday: string;
   hours_weekend: string;
   last_updated: string;
+  like_count?: number;
 };

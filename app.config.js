@@ -1,5 +1,3 @@
-import { ConfigContext, ExpoConfig } from 'expo/config';
-
 /**
  * 네이티브 SDK 키 — 프로젝트 루트의 .env 파일에 채워 넣으세요. (SETUP.md 참고)
  * 값을 바꾼 뒤에는 `npx expo prebuild --clean` 후 다시 빌드해야 반영됩니다.
@@ -9,7 +7,7 @@ const NAVER_MAP_CLIENT_ID =
 const KAKAO_NATIVE_APP_KEY =
   process.env.KAKAO_NATIVE_APP_KEY || 'YOUR_KAKAO_NATIVE_APP_KEY';
 
-export default ({ config }: ConfigContext): ExpoConfig => ({
+module.exports = ({ config }) => ({
   ...config,
   name: config.name ?? 'Take In',
   slug: config.slug ?? 'seatnow-app',

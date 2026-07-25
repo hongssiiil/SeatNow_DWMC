@@ -8,6 +8,9 @@ import React, {
   useState,
 } from 'react';
 import { Cafe, INITIAL_CAFES, cafeFromRow } from './data';
+import { fetchNickname, saveNickname as persistNickname } from './profile';
+import { RESERVATION_TIMEOUT_MINUTES } from './seats';
+import { fetchAllVisitCounts } from './social';
 import { CafeRow, supabase } from './supabase';
 
 export type User = {
@@ -24,6 +27,8 @@ type AppState = {
   user: User | null;
   isGuest: boolean;
   bookmarks: string[];
+  /** cafeId → 테이크인 횟수 (visitCounts, N>=1만) */
+  visitCounts: Record<string, number>;
   recentSearches: string[];
   now: number;
   /** Supabase 연결 여부 (false면 목업 데이터) */
@@ -38,8 +43,15 @@ type AppState = {
   addRecentSearch: (q: string) => void;
   removeRecentSearch: (q: string) => void;
   clearRecentSearches: () => void;
-  /** 예약(테이크인). 성공 시 true */
+  /**
+   * @deprecated 좌석 테이크인은 CafeDetail → useSeats().takeIn 사용.
+   * GPS 체크인(방문 인증)과 별개이며, 이 메서드는 하위 호환용으로만 남김.
+   */
   reserve: (cafeId: string, seatNo: number | null) => Promise<boolean>;
+  /** 닉네임 변경. 성공 시 true */
+  updateNickname: (nickname: string) => Promise<boolean>;
+  /** 목록/상세 동기화용 visitCount 갱신 */
+  setVisitCount: (cafeId: string, count: number) => void;
 };
 
 const AppContext = createContext<AppState | null>(null);
@@ -52,6 +64,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isGuest, setIsGuest] = useState(false);
   const [bookmarks, setBookmarks] = useState<string[]>([]);
+  const [visitCounts, setVisitCounts] = useState<Record<string, number>>({});
   const [recentSearches, setRecentSearches] = useState<string[]>([
     '톤즈',
     '성수동 카페',
@@ -144,37 +157,67 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (data) setBookmarks(data.map((r: { cafe_id: string }) => r.cafe_id));
   }, []);
 
+  const loadVisitCounts = useCallback(async (userKey: string) => {
+    const map = await fetchAllVisitCounts(userKey);
+    setVisitCounts(map);
+  }, []);
+
+  const setVisitCount = useCallback((cafeId: string, count: number) => {
+    if (!cafeId || typeof cafeId !== 'string') return;
+    const n = typeof count === 'number' && Number.isFinite(count) ? count : 0;
+    setVisitCounts((prev) => {
+      const base = prev && typeof prev === 'object' ? prev : {};
+      if (n <= 0) {
+        if (!(cafeId in base)) return base;
+        const next = { ...base };
+        delete next[cafeId];
+        return next;
+      }
+      if (base[cafeId] === n) return base;
+      return { ...base, [cafeId]: n };
+    });
+  }, []);
+
   const login = useCallback(
     (
       provider: 'kakao' | 'apple',
       profile?: { id?: string; name: string; email?: string }
     ) => {
       const key = profile?.id ?? `mock:${provider}`;
+      const fallbackName = profile?.name ?? '테이크인 회원';
       setUser({
         key,
-        // profile이 없는 경우는 Expo Go 미리보기뿐 — 목업 이름 사용
-        name: profile?.name ?? '테이크인 회원',
+        name: fallbackName,
         email: profile?.email,
         provider,
         joinedAt: Date.now() - 12 * DAY,
       });
       setIsGuest(false);
       setBookmarks([]);
+      setVisitCounts({});
       loadBookmarks(key);
+      loadVisitCounts(key);
+      // 저장된 닉네임이 있으면 덮어쓰기
+      fetchNickname(key).then((nick) => {
+        if (!nick) return;
+        setUser((prev) => (prev && prev.key === key ? { ...prev, name: nick } : prev));
+      });
     },
-    [loadBookmarks]
+    [loadBookmarks, loadVisitCounts]
   );
 
   const continueAsGuest = useCallback(() => {
     setUser(null);
     setIsGuest(true);
     setBookmarks([]);
+    setVisitCounts({});
   }, []);
 
   const logout = useCallback(() => {
     setUser(null);
     setIsGuest(false);
     setBookmarks([]);
+    setVisitCounts({});
   }, []);
 
   const toggleBookmark = useCallback((cafeId: string) => {
@@ -203,17 +246,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, []);
 
+  /**
+   * 레거시 호환용. 좌석 테이크인은 CafeDetail → useSeats().takeIn 사용.
+   * GPS 체크인(방문 인증·리뷰 자격)과 별개 — reservations 삽입/체크인 부여 없음.
+   */
   const reserve = useCallback(async (cafeId: string, seatNo: number | null) => {
     const u = userRef.current;
     if (!u) return false;
-    if (!supabase) return true; // 목업 모드: 저장 없이 성공 처리
-    const { error } = await supabase.from('reservations').insert({
-      user_key: u.key,
-      user_name: u.name,
-      cafe_id: cafeId,
-      seat_no: seatNo,
+    if (!supabase) return true;
+    if (seatNo == null) return false;
+    const { data, error } = await supabase.rpc('take_in_seat', {
+      p_cafe_id: cafeId,
+      p_seat_no: seatNo,
+      p_user_key: u.key,
+      p_timeout_minutes: RESERVATION_TIMEOUT_MINUTES,
     });
-    return !error;
+    if (error) {
+      console.warn('[reserve] take_in_seat failed:', error.message);
+      return false;
+    }
+    return !!(data as { ok?: boolean } | null)?.ok;
+  }, []);
+
+  const updateNickname = useCallback(async (nickname: string) => {
+    const u = userRef.current;
+    if (!u) return false;
+    const name = nickname.trim();
+    const ok = await persistNickname(u.key, name);
+    if (!ok) return false;
+    setUser((prev) => (prev ? { ...prev, name } : prev));
+    return true;
   }, []);
 
   const addRecentSearch = useCallback((q: string) => {
@@ -234,6 +296,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       user,
       isGuest,
       bookmarks,
+      visitCounts,
       recentSearches,
       now,
       live,
@@ -245,12 +308,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       removeRecentSearch,
       clearRecentSearches,
       reserve,
+      updateNickname,
+      setVisitCount,
     }),
     [
       cafes,
       user,
       isGuest,
       bookmarks,
+      visitCounts,
       recentSearches,
       now,
       live,
@@ -262,6 +328,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       removeRecentSearch,
       clearRecentSearches,
       reserve,
+      updateNickname,
+      setVisitCount,
     ]
   );
 

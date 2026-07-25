@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   FlatList,
   Pressable,
   ScrollView,
@@ -10,32 +11,28 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Alert } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { CafeCard } from '../../components/CafeCard';
+import { FilterChip } from '../../components/FilterChip';
+import {
+  AMENITY_BY_ID,
+  AMENITY_CATEGORY_META,
+  amenitiesByCategory,
+  cafeMatchesAmenityFilters,
+} from '../../constants/amenities';
 import { Cafe } from '../../lib/data';
 import { useApp } from '../../lib/store';
 import { colors, radius } from '../../lib/theme';
 
-type Party = '1' | '2' | '3' | 'custom' | null;
-type YesNo = '있음' | '없음' | null;
-type Noise = '조용함' | '보통' | '활기참' | null;
+const PRIMARY = '#1F4D3D';
 
 export default function SearchScreen() {
   const router = useRouter();
-  const { cafes, now, bookmarks, toggleBookmark, addRecentSearch } = useApp();
+  const { cafes, now, bookmarks, toggleBookmark, addRecentSearch, visitCounts } = useApp();
 
   const [mode, setMode] = useState<'form' | 'results'>('form');
   const [query, setQuery] = useState('');
-  const [party, setParty] = useState<Party>(null);
-  const [customParty, setCustomParty] = useState('');
-  const [outlet, setOutlet] = useState<YesNo>(null);
-  const [noise, setNoise] = useState<Noise>(null);
-  const [toilet, setToilet] = useState<YesNo>(null);
-  const [extras, setExtras] = useState<string[]>([]);
-
-  const partySize =
-    party === 'custom' ? parseInt(customParty, 10) || 0 : party ? parseInt(party, 10) : 0;
+  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
 
   const results = useMemo(() => {
     let list = cafes;
@@ -45,62 +42,36 @@ export default function SearchScreen() {
         (c) => c.name.includes(q) || c.address.includes(q) || c.region.includes(q)
       );
     }
-    if (partySize === 1) list = list.filter((c) => c.tags.includes('1인석'));
-    else if (partySize >= 4) list = list.filter((c) => c.tags.includes('4인석'));
-    else if (partySize >= 2)
-      list = list.filter((c) => c.tags.includes('소파석') || c.tags.includes('4인석'));
-    if (outlet === '있음') list = list.filter((c) => c.tags.includes('콘센트'));
-    if (outlet === '없음') list = list.filter((c) => !c.tags.includes('콘센트'));
-    if (noise) list = list.filter((c) => c.noise === noise);
-    if (toilet === '있음') list = list.filter((c) => c.tags.includes('내부 화장실'));
-    if (toilet === '없음') list = list.filter((c) => !c.tags.includes('내부 화장실'));
-    if (extras.length > 0)
-      list = list.filter((c) => extras.every((t) => c.tags.includes(t)));
+    list = list.filter((c) => cafeMatchesAmenityFilters(c, selectedAmenities));
     return [...list].sort((a, b) => a.walkMin - b.walkMin);
-  }, [cafes, query, partySize, outlet, noise, toilet, extras]);
+  }, [cafes, query, selectedAmenities]);
 
-  const activeFilterLabels = useMemo(() => {
-    const labels: { key: string; label: string; clear: () => void }[] = [];
-    if (party)
-      labels.push({
-        key: 'party',
-        label: party === 'custom' ? `${customParty || '?'}명` : `${party}명`,
-        clear: () => setParty(null),
-      });
-    if (outlet)
-      labels.push({ key: 'outlet', label: `콘센트 ${outlet}`, clear: () => setOutlet(null) });
-    if (noise) labels.push({ key: 'noise', label: noise, clear: () => setNoise(null) });
-    if (toilet)
-      labels.push({
-        key: 'toilet',
-        label: `내부 화장실 ${toilet}`,
-        clear: () => setToilet(null),
-      });
-    extras.forEach((t) =>
-      labels.push({
-        key: `extra-${t}`,
-        label: t,
-        clear: () => setExtras((prev) => prev.filter((x) => x !== t)),
-      })
+  const activeFilterLabels = useMemo(
+    () =>
+      selectedAmenities
+        .map((id) => AMENITY_BY_ID[id])
+        .filter(Boolean)
+        .map((a) => ({
+          key: a.id,
+          label: a.label,
+          clear: () =>
+            setSelectedAmenities((prev) => prev.filter((x) => x !== a.id)),
+        })),
+    [selectedAmenities]
+  );
+
+  const toggleAmenity = (id: string) => {
+    setSelectedAmenities((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
-    return labels;
-  }, [party, customParty, outlet, noise, toilet, extras]);
+  };
 
   const reset = () => {
     setQuery('');
-    setParty(null);
-    setCustomParty('');
-    setOutlet(null);
-    setNoise(null);
-    setToilet(null);
-    setExtras([]);
+    setSelectedAmenities([]);
   };
 
   const search = () => {
-    if (party === 'custom' && !parseInt(customParty, 10)) {
-      Alert.alert('인원수를 입력해 주세요');
-      return;
-    }
     if (query.trim()) addRecentSearch(query);
     setMode('results');
   };
@@ -114,7 +85,6 @@ export default function SearchScreen() {
     }
   };
 
-  // ── 결과 화면 ──────────────────────────────────────────
   if (mode === 'results') {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
@@ -129,19 +99,24 @@ export default function SearchScreen() {
         </View>
 
         {activeFilterLabels.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.pillRow}
-            style={{ flexGrow: 0 }}
+          <View
+            accessibilityLabel="active-amenity-filters"
+            style={styles.pillWrap}
           >
             {activeFilterLabels.map((f) => (
-              <Pressable key={f.key} style={styles.pill} onPress={f.clear}>
-                <Text style={styles.pillText}>{f.label}</Text>
+              <Pressable
+                key={f.key}
+                style={styles.pill}
+                onPress={f.clear}
+                hitSlop={4}
+              >
+                <Text style={styles.pillText} numberOfLines={1}>
+                  {f.label}
+                </Text>
                 <Ionicons name="close" size={14} color={colors.white} />
               </Pressable>
             ))}
-          </ScrollView>
+          </View>
         )}
 
         <FlatList
@@ -159,6 +134,7 @@ export default function SearchScreen() {
               cafe={item}
               now={now}
               bookmarked={bookmarks.includes(item.id)}
+              visitCount={visitCounts[item.id] ?? 0}
               onPress={() => router.push(`/cafe/${item.id}`)}
               onToggleBookmark={() => onToggleBookmark(item)}
             />
@@ -168,10 +144,8 @@ export default function SearchScreen() {
     );
   }
 
-  // ── 검색 폼 ──────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* 헤더 */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>카페 검색</Text>
         <Pressable hitSlop={10} onPress={() => router.push('/(tabs)/home')}>
@@ -179,178 +153,73 @@ export default function SearchScreen() {
         </Pressable>
       </View>
 
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 190 }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* 검색 입력 */}
-        <View style={styles.searchBox}>
-          <TextInput
-            style={styles.input}
-            placeholder="카페 이름을 입력하세요"
-            placeholderTextColor={colors.muted}
-            value={query}
-            onChangeText={setQuery}
-            onSubmitEditing={search}
-            returnKeyType="search"
-          />
-          <Ionicons name="search" size={20} color={colors.sub} />
-        </View>
-
-        <Text style={styles.filterTitle}>필터</Text>
-
-        {/* 인원수 */}
-        <GroupLabel icon={<Ionicons name="people-outline" size={18} color={colors.ink} />} label="인원수" />
-        <View style={styles.row}>
-          {(['1', '2', '3'] as const).map((p) => (
-            <OptionBtn
-              key={p}
-              label={`${p}명`}
-              active={party === p}
-              onPress={() => setParty(party === p ? null : p)}
-            />
-          ))}
-          <OptionBtn
-            label="직접입력"
-            active={party === 'custom'}
-            onPress={() => setParty(party === 'custom' ? null : 'custom')}
-          />
-        </View>
-        {party === 'custom' && (
-          <View style={styles.customRow}>
+      <View style={styles.formBody}>
+        <ScrollView
+          style={styles.formScroll}
+          contentContainerStyle={styles.formScrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
+          <View style={styles.searchBox}>
             <TextInput
-              style={styles.customInput}
-              placeholder="인원수 입력"
+              style={styles.input}
+              placeholder="카페 이름을 입력하세요"
               placeholderTextColor={colors.muted}
-              keyboardType="number-pad"
-              value={customParty}
-              onChangeText={setCustomParty}
-              maxLength={2}
+              value={query}
+              onChangeText={setQuery}
+              onSubmitEditing={search}
+              returnKeyType="search"
             />
-            <Text style={styles.customSuffix}>명</Text>
+            <Ionicons name="search" size={20} color={colors.sub} />
           </View>
-        )}
 
-        {/* 콘센트 */}
-        <GroupLabel
-          icon={<MaterialCommunityIcons name="power-plug-outline" size={18} color={colors.ink} />}
-          label="콘센트"
-        />
-        <View style={styles.row}>
-          {(['있음', '없음'] as const).map((v) => (
-            <OptionBtn
-              key={v}
-              label={v}
-              active={outlet === v}
-              onPress={() => setOutlet(outlet === v ? null : v)}
-            />
-          ))}
+          <Text style={styles.filterTitle}>필터</Text>
+
+          {AMENITY_CATEGORY_META.map((cat) => {
+            const items = amenitiesByCategory(cat.id);
+            return (
+              <View
+                key={cat.id}
+                accessibilityLabel="amenity-category-group"
+                style={styles.categoryGroup}
+              >
+                <Text
+                  accessibilityLabel={cat.accessibilityLabel}
+                  style={styles.groupLabelText}
+                >
+                  {cat.label}
+                </Text>
+                <View style={styles.chipWrap}>
+                  {items.map((a) => (
+                    <FilterChip
+                      key={a.id}
+                      label={a.label}
+                      icon={a.icon}
+                      iconSet={a.iconSet}
+                      accent={a.accent}
+                      active={selectedAmenities.includes(a.id)}
+                      onPress={() => toggleAmenity(a.id)}
+                      style={styles.chipItem}
+                    />
+                  ))}
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+
+        {/* 탭 바가 하단 inset을 처리하므로 여기선 고정 패딩만 사용 */}
+        <View style={styles.bottomBar}>
+          <Pressable style={styles.searchBtn} onPress={search}>
+            <Text style={styles.searchBtnText}>검색하기</Text>
+          </Pressable>
+          <Pressable style={styles.resetBtn} onPress={reset}>
+            <Text style={styles.resetBtnText}>초기화</Text>
+          </Pressable>
         </View>
-
-        {/* 소음 */}
-        <GroupLabel
-          icon={<Ionicons name="volume-medium-outline" size={18} color={colors.ink} />}
-          label="소음"
-        />
-        <View style={styles.row}>
-          {(['조용함', '보통', '활기참'] as const).map((v) => (
-            <OptionBtn
-              key={v}
-              label={v}
-              active={noise === v}
-              onPress={() => setNoise(noise === v ? null : v)}
-            />
-          ))}
-        </View>
-
-        {/* 내부 화장실 */}
-        <GroupLabel
-          icon={<MaterialCommunityIcons name="human-male-female" size={18} color={colors.ink} />}
-          label="내부 화장실"
-        />
-        <View style={styles.row}>
-          {(['있음', '없음'] as const).map((v) => (
-            <OptionBtn
-              key={v}
-              label={v}
-              active={toilet === v}
-              onPress={() => setToilet(toilet === v ? null : v)}
-            />
-          ))}
-        </View>
-
-        {/* 편의 */}
-        <GroupLabel
-          icon={<Ionicons name="options-outline" size={18} color={colors.ink} />}
-          label="편의"
-        />
-        <View style={styles.row}>
-          {['주차 가능', '시간제한 없음', '노트북 작업'].map((t) => (
-            <OptionBtn
-              key={t}
-              label={t}
-              small
-              active={extras.includes(t)}
-              onPress={() =>
-                setExtras((prev) =>
-                  prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
-                )
-              }
-            />
-          ))}
-        </View>
-      </ScrollView>
-
-      {/* 하단 고정 버튼 */}
-      <View style={styles.bottomBar}>
-        <Pressable style={styles.searchBtn} onPress={search}>
-          <Text style={styles.searchBtnText}>검색하기</Text>
-        </Pressable>
-        <Pressable style={styles.resetBtn} onPress={reset}>
-          <Text style={styles.resetBtnText}>초기화</Text>
-        </Pressable>
       </View>
     </SafeAreaView>
-  );
-}
-
-function GroupLabel({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <View style={styles.groupLabel}>
-      {icon}
-      <Text style={styles.groupLabelText}>{label}</Text>
-    </View>
-  );
-}
-
-function OptionBtn({
-  label,
-  active,
-  onPress,
-  small,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  small?: boolean;
-}) {
-  return (
-    <Pressable
-      style={[styles.option, active && styles.optionActive]}
-      onPress={onPress}
-    >
-      <Text
-        style={[
-          styles.optionText,
-          small && { fontSize: 13 },
-          active && styles.optionTextActive,
-        ]}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -390,6 +259,18 @@ const styles = StyleSheet.create({
     color: colors.ink,
     paddingVertical: 0,
   },
+  formBody: {
+    flex: 1,
+    minHeight: 0,
+  },
+  formScroll: {
+    flex: 1,
+    minHeight: 0,
+  },
+  formScrollContent: {
+    paddingBottom: 28,
+    flexGrow: 1,
+  },
   filterTitle: {
     fontSize: 20,
     fontWeight: '800',
@@ -398,78 +279,35 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     paddingHorizontal: 20,
   },
-  groupLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 22,
-    marginBottom: 12,
+  categoryGroup: {
+    marginTop: 18,
     paddingHorizontal: 20,
+    overflow: 'visible',
   },
   groupLabelText: {
     fontSize: 16,
+    lineHeight: 22,
     fontWeight: '700',
     color: colors.ink,
+    marginBottom: 12,
   },
-  row: {
+  chipWrap: {
     flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 20,
+    flexWrap: 'wrap',
+    // gap 대신 margin — ScrollView+flexWrap에서 마지막 줄 잘림 방지
+    marginRight: -10,
+    marginBottom: -10,
+    overflow: 'visible',
   },
-  option: {
-    flex: 1,
-    height: 54,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  optionActive: {
-    backgroundColor: colors.green,
-    borderColor: colors.green,
-  },
-  optionText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.ink,
-  },
-  optionTextActive: {
-    color: colors.white,
-  },
-  customRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 10,
-    paddingHorizontal: 20,
-  },
-  customInput: {
-    flex: 1,
-    height: 50,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.green,
-    backgroundColor: colors.white,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: colors.ink,
-  },
-  customSuffix: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.ink,
+  chipItem: {
+    marginRight: 10,
+    marginBottom: 10,
   },
   bottomBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flexShrink: 0,
     paddingHorizontal: 20,
     paddingTop: 14,
-    paddingBottom: 14,
+    paddingBottom: 12,
     backgroundColor: colors.bg,
     borderTopWidth: 1,
     borderTopColor: colors.divider,
@@ -478,7 +316,7 @@ const styles = StyleSheet.create({
   searchBtn: {
     height: 56,
     borderRadius: radius.pill,
-    backgroundColor: colors.green,
+    backgroundColor: PRIMARY,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -501,22 +339,34 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.ink,
   },
-  pillRow: {
-    gap: 8,
+  // 가로 ScrollView 대신 wrap — 결과 화면에서 편의시설 칩이 잘리지 않게
+  pillWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 8,
+    paddingTop: 4,
+    paddingBottom: 10,
+    marginRight: -8,
+    marginBottom: -8,
+    overflow: 'visible',
   },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
     gap: 5,
-    backgroundColor: colors.green,
+    backgroundColor: PRIMARY,
     borderRadius: radius.pill,
     paddingHorizontal: 13,
-    paddingVertical: 8,
+    paddingVertical: 9,
+    minHeight: 34,
+    marginRight: 8,
+    marginBottom: 8,
   },
   pillText: {
     fontSize: 13,
+    lineHeight: 18,
     fontWeight: '600',
     color: colors.white,
   },
