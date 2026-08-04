@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -16,6 +17,7 @@ import { useApp } from '../lib/store';
 import { colors, radius } from '../lib/theme';
 import { Cafe } from '../lib/data';
 import { signInWithApple, signInWithKakao } from '../lib/auth';
+import { describeAuthError } from '../lib/authMessages';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -36,13 +38,12 @@ export default function LoginScreen() {
     try {
       const result =
         provider === 'kakao' ? await signInWithKakao() : await signInWithApple();
-      // 네이티브 SDK가 없는 환경(Expo Go)에서는 목업 프로필로 로그인
-      login(provider, result ?? undefined);
+      login(provider, result);
       router.replace('/(tabs)/home');
-    } catch (e: any) {
-      if (e?.message !== 'CANCELLED') {
-        Alert.alert('로그인 실패', e?.message ?? '잠시 후 다시 시도해 주세요.');
-      }
+    } catch (e) {
+      // 취소를 포함해 모든 실패를 사용자에게 알린다. 조용히 넘어가는 경로는 없다.
+      const { title, body } = describeAuthError(provider, e);
+      Alert.alert(title, body);
     } finally {
       setLoading(null);
     }
@@ -121,21 +122,24 @@ export default function LoginScreen() {
           )}
         </Pressable>
 
-        <Pressable
-          style={[styles.socialBtn, { backgroundColor: colors.apple }]}
-          onPress={() => enterSocial('apple')}
-        >
-          {loading === 'apple' ? (
-            <ActivityIndicator color={colors.white} />
-          ) : (
-            <>
-              <Ionicons name="logo-apple" size={22} color={colors.white} />
-              <Text style={[styles.socialText, { color: colors.white }]}>
-                Apple로 계속하기
-              </Text>
-            </>
-          )}
-        </Pressable>
+        {/* Apple 로그인은 iOS 전용 — Android에서는 노출하지 않는다 */}
+        {Platform.OS === 'ios' && (
+          <Pressable
+            style={[styles.socialBtn, { backgroundColor: colors.apple }]}
+            onPress={() => enterSocial('apple')}
+          >
+            {loading === 'apple' ? (
+              <ActivityIndicator color={colors.white} />
+            ) : (
+              <>
+                <Ionicons name="logo-apple" size={22} color={colors.white} />
+                <Text style={[styles.socialText, { color: colors.white }]}>
+                  Apple로 계속하기
+                </Text>
+              </>
+            )}
+          </Pressable>
+        )}
 
         <Pressable onPress={enterGuest} hitSlop={8}>
           <Text style={styles.guestLink}>비회원으로 둘러보기 ›</Text>
