@@ -15,19 +15,19 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SavedCafeCard } from '../../components/CafeCard';
-import { ReviewModal } from '../../components/ReviewModal';
-import { Cafe } from '../../lib/data';
-import { validateNickname } from '../../lib/profile';
+import { SavedCafeCard } from '../components/CafeCard';
+import { ReviewModal } from '../components/ReviewModal';
+import { Cafe } from '../lib/data';
+import { validateNickname } from '../lib/profile';
 import {
   CafeReview,
   RecentTakeIn,
   fetchRecentTakeIns,
   submitReview,
   updateReview,
-} from '../../lib/social';
-import { useApp } from '../../lib/store';
-import { colors, radius } from '../../lib/theme';
+} from '../lib/social';
+import { useApp } from '../lib/store';
+import { colors, radius } from '../lib/theme';
 
 const PRIMARY = '#1F4D3D';
 
@@ -248,6 +248,14 @@ export default function MyPageScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={styles.header}>
+          {/* 탭바가 없어져 푸시된 화면이므로 뒤로가기가 필요하다 */}
+          <Pressable
+            accessibilityLabel="back-btn"
+            hitSlop={8}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/home'))}
+          >
+            <Ionicons name="chevron-back" size={26} color={colors.ink} />
+          </Pressable>
           <Text style={styles.title}>마이페이지</Text>
           <Pressable hitSlop={8} onPress={() => router.push('/settings')}>
             <Ionicons name="settings-outline" size={24} color={colors.ink} />
