@@ -16,43 +16,11 @@ export function StatusBadge({ cafe }: { cafe: Cafe }) {
       </View>
     );
   }
-  const s = seatStatus(cafe.seatsAvailable, cafe.seatsTotal);
+  const s = seatStatus(cafe.seatsAvailable);
   const c = statusColors(s);
   return (
     <View style={[styles.badge, { backgroundColor: c.bg }]}>
       <Text style={[styles.badgeText, { color: c.text }]}>{statusLabel(s)}</Text>
-    </View>
-  );
-}
-
-export function SeatProgress({ cafe, height = 8 }: { cafe: Cafe; height?: number }) {
-  if (isCafeClosed(cafe)) {
-    return (
-      <View style={[styles.track, { height, borderRadius: height / 2 }]}>
-        <View
-          style={{
-            width: '100%',
-            height,
-            borderRadius: height / 2,
-            backgroundColor: '#D0D0D0',
-          }}
-        />
-      </View>
-    );
-  }
-  const s = seatStatus(cafe.seatsAvailable, cafe.seatsTotal);
-  const c = statusColors(s);
-  const pct = Math.max(0.03, cafe.seatsAvailable / cafe.seatsTotal);
-  return (
-    <View style={[styles.track, { height, borderRadius: height / 2 }]}>
-      <View
-        style={{
-          width: `${pct * 100}%`,
-          height,
-          borderRadius: height / 2,
-          backgroundColor: c.bar,
-        }}
-      />
     </View>
   );
 }
@@ -127,15 +95,6 @@ export function CafeCard({
             <Text style={styles.name}>{cafe.name}</Text>
             {!closed && <StatusBadge cafe={cafe} />}
           </View>
-          {!closed && (
-            <>
-              <View style={styles.seatRow}>
-                <Text style={styles.seatBig}>{cafe.seatsAvailable}</Text>
-                <Text style={styles.seatSmall}> / {cafe.seatsTotal}석 남음</Text>
-              </View>
-              <SeatProgress cafe={cafe} />
-            </>
-          )}
           <View style={styles.metaRow}>
             <Ionicons name="location-outline" size={14} color={colors.sub} />
             <Text style={styles.meta}>도보 {cafe.walkMin}분</Text>
@@ -209,17 +168,8 @@ export function SavedCafeCard({
           </Pressable>
         </View>
         <View style={styles.savedBottom}>
-          {!closed && (
-            <>
-              <Text style={styles.savedSeats}>
-                <Text style={{ fontWeight: '800' }}>{cafe.seatsAvailable}</Text> /{' '}
-                {cafe.seatsTotal}석 남음
-              </Text>
-              <StatusBadge cafe={cafe} />
-            </>
-          )}
+          {!closed && <StatusBadge cafe={cafe} />}
         </View>
-        {!closed && <SeatProgress cafe={cafe} />}
       </View>
       {closed && <ClosedOverlay />}
     </Pressable>
@@ -248,7 +198,7 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   closedOverlay: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   closedBadge: {
@@ -298,26 +248,6 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 12,
     fontWeight: '700',
-  },
-  seatRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  seatBig: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  seatSmall: {
-    fontSize: 14,
-    color: colors.text,
-  },
-  track: {
-    backgroundColor: colors.track,
-    overflow: 'hidden',
-    alignSelf: 'stretch',
   },
   metaRow: {
     flexDirection: 'row',
@@ -370,10 +300,5 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 14,
     marginBottom: 8,
-  },
-  savedSeats: {
-    fontSize: 15,
-    color: colors.ink,
-    fontWeight: '600',
   },
 });

@@ -12,8 +12,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { SeatProgress, StatusBadge } from '../../components/CafeCard';
-import { SeatZoneMap } from '../../components/SeatZoneMap';
+import { StatusBadge } from '../../components/CafeCard';
 import { getCafeAmenityTags } from '../../constants/amenities';
 import { updatedLabel } from '../../lib/data';
 import {
@@ -29,7 +28,7 @@ import {
   toggleLike,
 } from '../../lib/social';
 import { useApp } from '../../lib/store';
-import { colors, radius } from '../../lib/theme';
+import { colors, radius, seatStatus, statusColors, statusLabel } from '../../lib/theme';
 import { isCafeClosed } from '../../utils/isCafeOpen';
 
 const PRIMARY = '#1F4D3D';
@@ -43,8 +42,7 @@ export default function CafeDetailScreen() {
   const { cafes, now, bookmarks, toggleBookmark, user, live, setVisitCount: syncVisitCount } =
     useApp();
   const [reserveOpen, setReserveOpen] = useState(false);
-  const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
-  /** 확인 모달에 표시할 좌석 (미선택 시 자동 배정된 번호) */
+  /** 확인 모달에 표시할 좌석 (자동 배정된 번호) */
   const [pendingSeat, setPendingSeat] = useState<number | null>(null);
   const [takeInBusy, setTakeInBusy] = useState(false);
 
@@ -157,6 +155,16 @@ export default function CafeDetailScreen() {
     );
   };
 
+  /**
+   * 자리 있음 / 만석 판단의 단일 기준.
+   * 좌석 단위 라이브 데이터가 있으면 그걸 우선하고, 없으면 카페 집계값으로 폴백한다.
+   * 상태 뱃지와 CTA가 이 값을 함께 쓰므로 둘이 어긋날 수 없다.
+   */
+  const hasFreeSeat =
+    seats.some((s) => s.status === 'available') || cafe.seatsAvailable > 0;
+  const currentSeatStatus = seatStatus(hasFreeSeat ? 1 : 0);
+  const seatStatusColors = statusColors(currentSeatStatus);
+
   const onReserve = () => {
     if (isCafeClosed(cafe)) {
       Alert.alert('휴무중이에요', '영업 시간에 다시 테이크인해 주세요.');
@@ -173,14 +181,11 @@ export default function CafeDetailScreen() {
       );
       return;
     }
-    const hasAvailable =
-      seats.some((s) => s.status === 'available') || cafe.seatsAvailable > 0;
-    if (!hasAvailable) {
+    if (!hasFreeSeat) {
       Alert.alert('만석이에요', '자리가 나면 다시 시도해 주세요.');
       return;
     }
-    const seatNo =
-      selectedSeat ?? pickFirstAvailableSeat(seats)?.seatNo ?? null;
+    const seatNo = pickFirstAvailableSeat(seats)?.seatNo ?? null;
     if (seatNo == null) {
       Alert.alert('만석이에요', '자리가 나면 다시 시도해 주세요.');
       return;
@@ -210,8 +215,7 @@ export default function CafeDetailScreen() {
             const next = Math.max(0, localVisitCount - 1);
             setLocalVisitCount(next);
             syncVisitCount(cafe.id, next);
-            setSelectedSeat(null);
-            Alert.alert('취소됐어요', '좌석이 다시 여유로 변경됐어요.');
+            Alert.alert('취소됐어요', '좌석이 다시 자리 있음으로 변경됐어요.');
           },
         },
       ]
@@ -228,11 +232,7 @@ export default function CafeDetailScreen() {
 
   const confirmReserve = async () => {
     if (!user || takeInBusy) return;
-    const seatNo =
-      pendingSeat ??
-      selectedSeat ??
-      pickFirstAvailableSeat(seats)?.seatNo ??
-      null;
+    const seatNo = pendingSeat ?? pickFirstAvailableSeat(seats)?.seatNo ?? null;
     if (seatNo == null) {
       setReserveOpen(false);
       Alert.alert('만석이에요', '자리가 나면 다시 시도해 주세요.');
@@ -259,9 +259,8 @@ export default function CafeDetailScreen() {
     syncVisitCount(cafe.id, next);
     Alert.alert(
       '테이크인 완료',
-      `${cafe.name} ${seatNo}번 좌석이 테이크인중으로 표시돼요.\n${RESERVATION_TIMEOUT_MINUTES}분 안에 착석해 주세요!`
+      `${cafe.name} ${seatNo}번 좌석이 테이크인됐어요.\n${RESERVATION_TIMEOUT_MINUTES}분 안에 착석해 주세요!`
     );
-    setSelectedSeat(null);
     setPendingSeat(null);
   };
 
@@ -272,15 +271,13 @@ export default function CafeDetailScreen() {
     ? '테이크인 취소'
     : closed
       ? '휴무중'
-      : seats.some((s) => s.status === 'available') || cafe.seatsAvailable > 0
+      : hasFreeSeat
         ? '테이크인 하기'
         : '만석이에요';
 
   const ctaDisabled = myReservation
     ? takeInBusy
-    : closed ||
-      takeInBusy ||
-      !(seats.some((s) => s.status === 'available') || cafe.seatsAvailable > 0);
+    : closed || takeInBusy || !hasFreeSeat;
 
   return (
     <View style={styles.safe}>
@@ -339,15 +336,6 @@ export default function CafeDetailScreen() {
           <Text style={styles.category}>
             {cafe.category} · {cafe.region}
           </Text>
-          {!closed && (
-            <>
-              <View style={styles.seatRow}>
-                <Text style={styles.seatBig}>{cafe.seatsAvailable}</Text>
-                <Text style={styles.seatSmall}> / {cafe.seatsTotal}석 남음</Text>
-              </View>
-              <SeatProgress cafe={cafe} height={9} />
-            </>
-          )}
           <View style={styles.metaRow}>
             <Ionicons name="location-outline" size={15} color={colors.sub} />
             <Text style={styles.meta}>도보 {cafe.walkMin}분</Text>
@@ -379,33 +367,19 @@ export default function CafeDetailScreen() {
           <Text style={styles.sectionTitle}>실시간 좌석</Text>
           <View style={styles.seatMapWrap}>
             <View style={closed && styles.seatMapDimmed}>
-              <SeatZoneMap
-                seats={seats}
-                selectedSeat={selectedSeat}
-                disabled={closed}
-                onSelect={(seatNo) => {
-                  if (myReservation) {
-                    Alert.alert(
-                      '테이크인 중이에요',
-                      '다른 좌석을 고르려면 먼저 테이크인을 취소해 주세요.'
-                    );
-                    return;
-                  }
-                  const seat = seats.find((s) => s.seatNo === seatNo);
-                  if (!seat) return;
-                  if (seat.status !== 'available') {
-                    Alert.alert(
-                      seat.status === 'reserved'
-                        ? '테이크인 중인 자리예요'
-                        : seat.status === 'needs_check'
-                          ? '확인이 필요한 자리예요'
-                          : '이미 사용 중인 자리예요'
-                    );
-                    return;
-                  }
-                  setSelectedSeat((prev) => (prev === seatNo ? null : seatNo));
-                }}
-              />
+              {/* 좌석 배치도 제거 — 자리 있음 / 만석 2단계만 노출한다 */}
+              <View accessibilityLabel="seat-status-card" style={styles.seatStatusCard}>
+                <View
+                  accessibilityLabel="status-dot"
+                  style={[styles.seatStatusDot, { backgroundColor: seatStatusColors.bar }]}
+                />
+                <Text
+                  accessibilityLabel="seat-status-label"
+                  style={[styles.seatStatusLabel, { color: seatStatusColors.text }]}
+                >
+                  {statusLabel(currentSeatStatus)}
+                </Text>
+              </View>
             </View>
             {closed && (
               <View
@@ -493,12 +467,10 @@ export default function CafeDetailScreen() {
             <Ionicons name="cafe" size={34} color={colors.green} />
             <Text style={styles.modalTitle}>{cafe.name}</Text>
             <Text style={styles.modalSub}>
+              {/* 좌석 선택 UI가 없으므로 항상 빈 좌석이 자동 배정된다 */}
               {pendingSeat != null
-                ? `${pendingSeat}번 좌석을 테이크인할까요?`
-                : '여유 좌석 하나를 자동으로 테이크인할까요?'}
-              {selectedSeat == null && pendingSeat != null
-                ? '\n(선택하지 않아 여유 좌석이 자동 배정됐어요)'
-                : ''}
+                ? `빈 좌석(${pendingSeat}번)을 자동으로 테이크인할까요?`
+                : '빈 좌석 하나를 자동으로 테이크인할까요?'}
               {'\n'}
               {RESERVATION_TIMEOUT_MINUTES}분 안에 착석하지 않으면 자동 취소돼요.
               {'\n'}도착 예상: 도보 {cafe.walkMin}분
@@ -604,21 +576,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.sub,
   },
-  seatRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginTop: 12,
-    marginBottom: 10,
-  },
-  seatBig: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  seatSmall: {
-    fontSize: 16,
-    color: colors.text,
-  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -685,8 +642,28 @@ const styles = StyleSheet.create({
   seatMapDimmed: {
     opacity: 0.45,
   },
+  seatStatusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.white,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 18,
+    paddingVertical: 20,
+  },
+  seatStatusDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  seatStatusLabel: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
   seatClosedOverlay: {
-    ...StyleSheet.absoluteFill,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.35)',
     alignItems: 'center',
     justifyContent: 'center',

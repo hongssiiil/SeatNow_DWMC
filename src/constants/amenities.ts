@@ -137,26 +137,19 @@ export const AMENITIES: Amenity[] = [
     iconSet: 'ion',
   },
 
-  // congestion-filter (seatStatus)
+  // congestion-filter (seatStatus) — 자리 있음 / 만석 2단계
   {
     id: 'congestion-good',
-    label: '여유',
+    label: '자리 있음',
     category: 'congestion-filter',
-    match: 'good',
+    match: 'available',
     accent: '#6FCF97',
   },
   {
-    id: 'congestion-mid',
-    label: '보통',
-    category: 'congestion-filter',
-    match: 'mid',
-    accent: '#F2C94C',
-  },
-  {
     id: 'congestion-bad',
-    label: '혼잡',
+    label: '만석',
     category: 'congestion-filter',
-    match: 'bad',
+    match: 'full',
     accent: '#EB5757',
   },
 ];
@@ -168,7 +161,7 @@ export const TAG_POOL = AMENITIES.filter(
 
 export function cafeHasAmenity(cafe: Cafe, amenity: Amenity): boolean {
   if (amenity.category === 'congestion-filter') {
-    return seatStatus(cafe.seatsAvailable, cafe.seatsTotal) === amenity.match;
+    return seatStatus(cafe.seatsAvailable) === amenity.match;
   }
   if (amenity.category === 'noise-level') {
     if (cafe.noise === amenity.match) return true;
