@@ -12,13 +12,24 @@ const throwOnRequire = () => {
   throw new Error('Cannot find module');
 };
 
+/** 웹 OAuth 폴백 호출을 관찰하기 위한 스파이. setup()이 매번 새로 만든다. */
+let webSpy: jest.Mock;
+
 function setup(opts: {
   platform?: 'ios' | 'android';
   kakaoKey?: string;
   kakaoUser?: Record<string, unknown> | 'missing';
   apple?: Record<string, unknown> | 'missing';
+  /** signInWithAppleWeb의 동작. 기본값은 성공. */
+  web?: () => Promise<{ sub: string; email?: string }>;
 }) {
   jest.resetModules();
+
+  webSpy = jest.fn(opts.web ?? (async () => ({ sub: 'WEBSUB', email: 'w@b.com' })));
+  jest.doMock('../appleAuth', () => ({
+    signInWithAppleWeb: webSpy,
+    appleSubFromUser: jest.fn(),
+  }));
 
   jest.doMock('react-native', () => ({
     Platform: { OS: opts.platform ?? 'ios' },
@@ -75,25 +86,90 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-describe('signInWithApple', () => {
-  it('Android에서는 UNSUPPORTED_PLATFORM으로 실패한다', async () => {
+describe('signInWithApple — 플랫폼별 경로 선택', () => {
+  it('Android에서는 네이티브를 거치지 않고 곧바로 웹 OAuth를 쓴다', async () => {
     const { signInWithApple } = setup({ platform: 'android' });
-    expect(await expectFailure(signInWithApple)).toBe('UNSUPPORTED_PLATFORM');
+    await expect(signInWithApple()).resolves.toEqual({
+      id: 'apple:WEBSUB',
+      name: 'Apple 사용자',
+      email: 'w@b.com',
+    });
+    expect(webSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('네이티브 모듈이 없으면 NATIVE_MODULE_MISSING으로 실패한다', async () => {
+  it('iOS에서 네이티브가 성공하면 웹 OAuth를 호출하지 않는다', async () => {
+    const { signInWithApple } = setup({
+      platform: 'ios',
+      apple: {
+        isAvailableAsync: async () => true,
+        signInAsync: async () => ({ user: 'NATIVESUB', fullName: null, email: null }),
+      },
+    });
+    await expect(signInWithApple()).resolves.toMatchObject({ id: 'apple:NATIVESUB' });
+    expect(webSpy).not.toHaveBeenCalled();
+  });
+
+  it('iOS에서 네이티브 모듈이 없으면 웹 OAuth로 폴백한다', async () => {
     const { signInWithApple } = setup({ platform: 'ios', apple: 'missing' });
-    expect(await expectFailure(signInWithApple)).toBe('NATIVE_MODULE_MISSING');
+    await expect(signInWithApple()).resolves.toMatchObject({ id: 'apple:WEBSUB' });
+    expect(webSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('isAvailableAsync가 false면 UNAVAILABLE로 실패한다', async () => {
+  it('iOS에서 네이티브가 사용 불가면 웹 OAuth로 폴백한다', async () => {
     const { signInWithApple } = setup({
       platform: 'ios',
       apple: { isAvailableAsync: async () => false, signInAsync: jest.fn() },
     });
-    expect(await expectFailure(signInWithApple)).toBe('UNAVAILABLE');
+    await expect(signInWithApple()).resolves.toMatchObject({ id: 'apple:WEBSUB' });
+    expect(webSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('네이티브가 서버 오류로 실패해도 웹 OAuth로 폴백한다', async () => {
+    const { signInWithApple } = setup({
+      platform: 'ios',
+      apple: {
+        isAvailableAsync: async () => true,
+        signInAsync: async () => {
+          const e: any = new Error('잘못된 클라이언트 ID를 지정');
+          e.code = 'ERR_REQUEST_UNKNOWN';
+          throw e;
+        },
+      },
+    });
+    await expect(signInWithApple()).resolves.toMatchObject({ id: 'apple:WEBSUB' });
+    expect(webSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('네이티브를 사용자가 취소하면 웹으로 폴백하지 않고 CANCELLED로 실패한다', async () => {
+    const { signInWithApple } = setup({
+      platform: 'ios',
+      apple: {
+        isAvailableAsync: async () => true,
+        signInAsync: async () => {
+          const e: any = new Error('canceled');
+          e.code = 'ERR_REQUEST_CANCELED';
+          throw e;
+        },
+      },
+    });
+    expect(await expectFailure(signInWithApple)).toBe('CANCELLED');
+    expect(webSpy).not.toHaveBeenCalled();
+  });
+
+  it('네이티브와 웹이 모두 실패하면 웹의 실패 이유를 보고한다', async () => {
+    const { signInWithApple } = setup({
+      platform: 'android',
+      web: async () => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { AuthError } = require('../authError');
+        throw new AuthError('NOT_CONFIGURED', 'Supabase 미설정');
+      },
+    });
+    expect(await expectFailure(signInWithApple)).toBe('NOT_CONFIGURED');
+  });
+});
+
+describe('signInWithApple — 네이티브 경로 세부', () => {
   it('사용자가 취소하면 CANCELLED로 실패한다', async () => {
     const { signInWithApple } = setup({
       platform: 'ios',
@@ -109,23 +185,28 @@ describe('signInWithApple', () => {
     expect(await expectFailure(signInWithApple)).toBe('CANCELLED');
   });
 
-  it('SDK가 실패하면 PROVIDER_ERROR로 실패하고 원본 메시지를 유지한다', async () => {
-    const raw = '잘못된 클라이언트 ID를 지정';
+  it('SDK 실패 후 웹도 실패하면 실패가 표면화된다 (조용히 넘어가지 않는다)', async () => {
     const { signInWithApple } = setup({
       platform: 'ios',
       apple: {
         isAvailableAsync: async () => true,
         signInAsync: async () => {
-          const e: any = new Error(raw);
+          const e: any = new Error('잘못된 클라이언트 ID를 지정');
           e.code = 'ERR_REQUEST_UNKNOWN';
           throw e;
         },
       },
+      web: async () => {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const { AuthError } = require('../authError');
+        throw new AuthError('PROVIDER_ERROR', '웹 OAuth도 실패');
+      },
     });
-    await expect(signInWithApple()).rejects.toThrow(raw);
+    expect(await expectFailure(signInWithApple)).toBe('PROVIDER_ERROR');
+    expect(webSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('credential에 user가 없으면 PROVIDER_ERROR로 실패한다 (목업 키 폴백 방지)', async () => {
+  it('credential에 user가 없으면 웹으로 폴백한다 (목업 키 폴백은 하지 않는다)', async () => {
     const { signInWithApple } = setup({
       platform: 'ios',
       apple: {
@@ -133,7 +214,8 @@ describe('signInWithApple', () => {
         signInAsync: async () => ({ user: null, fullName: null, email: null }),
       },
     });
-    expect(await expectFailure(signInWithApple)).toBe('PROVIDER_ERROR');
+    await expect(signInWithApple()).resolves.toMatchObject({ id: 'apple:WEBSUB' });
+    expect(webSpy).toHaveBeenCalledTimes(1);
   });
 
   it('성공하면 apple: 접두사가 붙은 id를 반환한다', async () => {

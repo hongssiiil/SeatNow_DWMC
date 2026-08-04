@@ -1,56 +1,18 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+import { signInWithAppleWeb } from './appleAuth';
+import { fail, reasonOf } from './authError';
+
+export { AuthError } from './authError';
+export type { AuthFailureReason, Provider } from './authError';
+
 export type AuthResult = {
   /** 즐겨찾기·예약 저장에 쓰는 안정적인 사용자 키 (예: kakao:12345) */
   id: string;
   name: string;
   email?: string;
 };
-
-export type Provider = 'kakao' | 'apple';
-
-export type AuthFailureReason =
-  /** 사용자가 직접 취소 */
-  | 'CANCELLED'
-  /** Android에서 Apple 로그인 호출 */
-  | 'UNSUPPORTED_PLATFORM'
-  /** Expo Go 등 네이티브 모듈 부재 */
-  | 'NATIVE_MODULE_MISSING'
-  /** SDK 키 미설정 */
-  | 'NOT_CONFIGURED'
-  /** 기기가 해당 로그인을 지원하지 않음 */
-  | 'UNAVAILABLE'
-  /** SDK·서버가 반환한 실패 */
-  | 'PROVIDER_ERROR';
-
-export class AuthError extends Error {
-  readonly reason: AuthFailureReason;
-  readonly cause?: unknown;
-
-  constructor(reason: AuthFailureReason, message: string, cause?: unknown) {
-    super(message);
-    this.name = 'AuthError';
-    this.reason = reason;
-    this.cause = cause;
-    // Babel의 클래스 상속 변환에서 프로토타입이 끊기는 것을 방지
-    Object.setPrototypeOf(this, AuthError.prototype);
-  }
-}
-
-/**
- * 로그인 실패는 전부 이 함수를 통해 표면화된다. 조용히 null을 반환하는 경로는 없다.
- * 진단 로그를 남긴 뒤 AuthError를 던진다.
- */
-function fail(
-  provider: Provider,
-  reason: AuthFailureReason,
-  message: string,
-  cause?: unknown,
-): never {
-  console.error('[auth]', { provider, reason, message, cause });
-  throw new AuthError(reason, message, cause);
-}
 
 let kakaoInitialized = false;
 
@@ -125,11 +87,39 @@ export async function signInWithKakao(): Promise<AuthResult> {
   };
 }
 
+/**
+ * Apple 로그인 (하이브리드).
+ *
+ * iOS는 네이티브 시트를 우선 시도한다. UX가 좋고 사용자 이름을 받을 수 있다.
+ * 네이티브가 취소 외의 이유로 실패하면 웹 OAuth로 폴백한다 — 네이티브 경로가
+ * 막혀도 로그인이 가능해야 하기 때문이다. Android는 네이티브 구현이 없어 곧바로
+ * 웹 OAuth를 쓴다.
+ *
+ * 어느 경로든 사용자 키는 `apple:{sub}`로 동일하다. Service ID가 primary App ID에
+ * 연결되어 있으면 Apple이 같은 팀 그룹에 같은 식별자를 주기 때문이다.
+ */
 export async function signInWithApple(): Promise<AuthResult> {
   if (Platform.OS !== 'ios') {
-    fail('apple', 'UNSUPPORTED_PLATFORM', 'Apple 로그인은 iOS에서만 지원됩니다.');
+    return appleWebResult();
   }
 
+  try {
+    return await signInWithAppleNative();
+  } catch (e) {
+    // 사용자가 스스로 취소한 것은 폴백 대상이 아니다.
+    if (reasonOf(e) === 'CANCELLED') throw e;
+    console.error('[auth] 네이티브 Apple 로그인 실패 — 웹 OAuth로 폴백합니다', e);
+    return appleWebResult();
+  }
+}
+
+async function appleWebResult(): Promise<AuthResult> {
+  const { sub, email } = await signInWithAppleWeb();
+  // 웹 OAuth는 사용자 이름을 제공하지 않는다(Apple 사양).
+  return { id: `apple:${sub}`, name: 'Apple 사용자', email };
+}
+
+async function signInWithAppleNative(): Promise<AuthResult> {
   let AppleAuthentication: any;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports

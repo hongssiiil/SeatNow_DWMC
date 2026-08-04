@@ -1,4 +1,5 @@
 import 'react-native-url-polyfill/auto';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -6,14 +7,24 @@ const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
 /**
  * .env에 키가 없으면 null — 앱은 목업 데이터로 동작한다.
+ *
+ * Supabase Auth는 Apple 웹 OAuth의 중개자로만 쓴다 (앱에 .p8 키를 넣을 수 없어
+ * client secret 서명과 코드 교환을 위임한다). 앱의 사용자 키는 여전히
+ * `apple:{sub}` / `kakao:{id}`이고 `user_key` 스킴은 그대로다.
+ *
+ * PKCE 흐름이라 authorize와 exchangeCodeForSession 사이에 code verifier가
+ * 유지되어야 한다. 그래서 persistSession과 AsyncStorage가 필요하다.
  */
 export const supabase: SupabaseClient | null =
   url && anonKey
     ? createClient(url, anonKey, {
         auth: {
-          // 자체 세션 미사용 (카카오/Apple 네이티브 로그인 사용)
-          persistSession: false,
-          autoRefreshToken: false,
+          storage: AsyncStorage,
+          persistSession: true,
+          autoRefreshToken: true,
+          // 딥링크는 appleAuth.ts가 직접 처리한다.
+          detectSessionInUrl: false,
+          flowType: 'pkce',
         },
       })
     : null;

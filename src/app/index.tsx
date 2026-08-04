@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -122,24 +121,22 @@ export default function LoginScreen() {
           )}
         </Pressable>
 
-        {/* Apple 로그인은 iOS 전용 — Android에서는 노출하지 않는다 */}
-        {Platform.OS === 'ios' && (
-          <Pressable
-            style={[styles.socialBtn, { backgroundColor: colors.apple }]}
-            onPress={() => enterSocial('apple')}
-          >
-            {loading === 'apple' ? (
-              <ActivityIndicator color={colors.white} />
-            ) : (
-              <>
-                <Ionicons name="logo-apple" size={22} color={colors.white} />
-                <Text style={[styles.socialText, { color: colors.white }]}>
-                  Apple로 계속하기
-                </Text>
-              </>
-            )}
-          </Pressable>
-        )}
+        {/* iOS는 네이티브 시트, Android는 웹 OAuth — 양 플랫폼 모두 지원한다 */}
+        <Pressable
+          style={[styles.socialBtn, { backgroundColor: colors.apple }]}
+          onPress={() => enterSocial('apple')}
+        >
+          {loading === 'apple' ? (
+            <ActivityIndicator color={colors.white} />
+          ) : (
+            <>
+              <Ionicons name="logo-apple" size={22} color={colors.white} />
+              <Text style={[styles.socialText, { color: colors.white }]}>
+                Apple로 계속하기
+              </Text>
+            </>
+          )}
+        </Pressable>
 
         <Pressable onPress={enterGuest} hitSlop={8}>
           <Text style={styles.guestLink}>비회원으로 둘러보기 ›</Text>

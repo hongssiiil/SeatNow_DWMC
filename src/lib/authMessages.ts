@@ -1,4 +1,4 @@
-import type { AuthFailureReason, Provider } from './auth';
+import { reasonOf, type Provider } from './authError';
 
 /**
  * AuthError를 사용자에게 보여줄 문구로 바꾼다.
@@ -9,12 +9,6 @@ const PROVIDER_LABEL: Record<Provider, string> = {
   kakao: '카카오',
   apple: 'Apple',
 };
-
-/** AuthError가 아닐 수도 있는 값에서 reason을 안전하게 꺼낸다. */
-function reasonOf(error: unknown): AuthFailureReason | null {
-  const reason = (error as { reason?: unknown } | null | undefined)?.reason;
-  return typeof reason === 'string' ? (reason as AuthFailureReason) : null;
-}
 
 function messageOf(error: unknown): string {
   const message = (error as { message?: unknown } | null | undefined)?.message;

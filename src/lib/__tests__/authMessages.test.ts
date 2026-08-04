@@ -1,4 +1,4 @@
-import { AuthError, type AuthFailureReason } from '../auth';
+import { AuthError, type AuthFailureReason } from '../authError';
 import { describeAuthError } from '../authMessages';
 
 const ALL_REASONS: AuthFailureReason[] = [
