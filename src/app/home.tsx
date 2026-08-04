@@ -13,11 +13,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { CafeMap, CafeMapHandle } from '../../components/CafeMap';
-import { CafeCard } from '../../components/CafeCard';
-import { Cafe } from '../../lib/data';
-import { useApp } from '../../lib/store';
-import { colors, radius } from '../../lib/theme';
+import { CafeMap, CafeMapHandle } from '../components/CafeMap';
+import { CafeCard } from '../components/CafeCard';
+import { Cafe } from '../lib/data';
+import { useApp } from '../lib/store';
+import { colors, radius } from '../lib/theme';
 
 const SCREEN_H = Dimensions.get('window').height;
 const SHEET_EXPANDED = SCREEN_H * 0.16;
@@ -44,14 +44,16 @@ export default function HomeScreen() {
 
   // 바텀시트 드래그
   const sheetY = useRef(new Animated.Value(SHEET_COLLAPSED)).current;
+  /** 시트의 논리적 현재 위치. Animated 리스너 대신 직접 갱신한다. */
   const sheetPos = useRef(SHEET_COLLAPSED);
-  sheetY.addListener(({ value }) => {
-    sheetPos.current = value;
-  });
+  /** 이번 제스처가 시작된 위치. g.dy 가 누적값이라 기준점이 고정돼야 한다. */
+  const dragStart = useRef(SHEET_COLLAPSED);
+
   const snapTo = (target: number) => {
+    sheetPos.current = target;
     Animated.spring(sheetY, {
       toValue: target,
-      useNativeDriver: false,
+      useNativeDriver: true,
       bounciness: 4,
     }).start();
   };
@@ -60,11 +62,15 @@ export default function HomeScreen() {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 4,
+      onPanResponderGrant: () => {
+        dragStart.current = sheetPos.current;
+      },
       onPanResponderMove: (_, g) => {
         const next = Math.min(
           SHEET_HIDDEN,
-          Math.max(SHEET_EXPANDED, sheetPos.current + g.dy)
+          Math.max(SHEET_EXPANDED, dragStart.current + g.dy)
         );
+        sheetPos.current = next;
         sheetY.setValue(next);
       },
       onPanResponderRelease: (_, g) => {
@@ -124,8 +130,17 @@ export default function HomeScreen() {
     }
   };
 
+  /**
+   * top 은 레이아웃 속성이라 네이티브 드라이버를 못 쓴다 — 드래그 매 프레임마다
+   * JS 브리지를 타고 시트/리스트 레이아웃이 다시 계산돼 버벅인다.
+   * 위치를 고정하고 translateY 로만 움직여 애니메이션을 네이티브로 넘긴다.
+   */
+  const sheetTranslateY = Animated.subtract(sheetY, SHEET_EXPANDED);
   // 현위치 버튼: 바텀시트 상단보다 LOC_BTN_GAP + SIZE 만큼 위
-  const locationBtnTop = Animated.subtract(sheetY, LOC_BTN_SIZE + LOC_BTN_GAP);
+  const locationBtnTranslateY = Animated.subtract(
+    sheetY,
+    LOC_BTN_SIZE + LOC_BTN_GAP
+  );
 
   return (
     <View style={styles.container}>
@@ -167,12 +182,33 @@ export default function HomeScreen() {
             color={colors.ink}
           />
         </Pressable>
+
+        {/* 마이페이지 진입 — 탭바를 없앤 대신 검색바 우측 프로필로 들어간다 */}
+        <Pressable
+          accessibilityLabel="mypage-btn"
+          hitSlop={10}
+          style={styles.profileBtn}
+          onPress={() => router.push('/mypage')}
+        >
+          {user ? (
+            <View style={styles.profileAvatar}>
+              <Text style={styles.profileAvatarText}>{user.name.slice(0, 2)}</Text>
+            </View>
+          ) : (
+            <View style={[styles.profileAvatar, styles.profileAvatarGuest]}>
+              <Ionicons name="person" size={15} color={colors.white} />
+            </View>
+          )}
+        </Pressable>
       </Pressable>
 
       {/* 현위치 버튼 — 시트와 겹치지 않게 시트 바로 위 */}
       <Animated.View
         pointerEvents="box-none"
-        style={[styles.locationBtnWrap, { top: locationBtnTop }]}
+        style={[
+          styles.locationBtnWrap,
+          { transform: [{ translateY: locationBtnTranslateY }] },
+        ]}
       >
         <Pressable
           accessibilityLabel="my-location-btn"
@@ -184,7 +220,9 @@ export default function HomeScreen() {
       </Animated.View>
 
       {/* 바텀시트 */}
-      <Animated.View style={[styles.sheet, { top: sheetY }]}>
+      <Animated.View
+        style={[styles.sheet, { transform: [{ translateY: sheetTranslateY }] }]}
+      >
         <View {...panResponder.panHandlers}>
           <View style={styles.handleWrap}>
             <View style={styles.handle} />
@@ -283,7 +321,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 11,
     paddingLeft: 10,
-    paddingRight: 18,
+    paddingRight: 10,
     shadowColor: '#000',
     shadowOpacity: 0.1,
     shadowRadius: 12,
@@ -303,8 +341,28 @@ const styles = StyleSheet.create({
     color: colors.muted,
     flexShrink: 1,
   },
+  profileBtn: {
+    marginLeft: 2,
+  },
+  profileAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.green,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarGuest: {
+    backgroundColor: colors.sage,
+  },
+  profileAvatarText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '800',
+  },
   locationBtnWrap: {
     position: 'absolute',
+    top: 0,
     right: 16,
     zIndex: 5,
   },
@@ -327,6 +385,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    // top+bottom 을 고정해 높이를 상수로 만든다. 이동은 translateY 가 담당.
+    top: SHEET_EXPANDED,
     bottom: 0,
     backgroundColor: colors.bg,
     borderTopLeftRadius: 28,

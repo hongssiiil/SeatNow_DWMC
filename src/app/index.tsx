@@ -26,7 +26,7 @@ export default function LoginScreen() {
 
   const enterGuest = () => {
     continueAsGuest();
-    router.replace('/(tabs)/home');
+    router.replace('/home');
   };
 
   const enterSocial = async (provider: 'kakao' | 'apple') => {
@@ -37,7 +37,7 @@ export default function LoginScreen() {
         provider === 'kakao' ? await signInWithKakao() : await signInWithApple();
       // 네이티브 SDK가 없는 환경(Expo Go)에서는 목업 프로필로 로그인
       login(provider, result ?? undefined);
-      router.replace('/(tabs)/home');
+      router.replace('/home');
     } catch (e: any) {
       if (e?.message !== 'CANCELLED') {
         Alert.alert('로그인 실패', e?.message ?? '잠시 후 다시 시도해 주세요.');
