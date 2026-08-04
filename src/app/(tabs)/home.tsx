@@ -18,7 +18,13 @@ import { CafeCard } from '../../components/CafeCard';
 import { FilterChip } from '../../components/FilterChip';
 import { Cafe } from '../../lib/data';
 import { useApp } from '../../lib/store';
-import { colors, radius } from '../../lib/theme';
+import {
+  colors,
+  radius,
+  seatStatus,
+  statusLabel,
+  type SeatStatus,
+} from '../../lib/theme';
 
 const SCREEN_H = Dimensions.get('window').height;
 const SHEET_EXPANDED = SCREEN_H * 0.16;
@@ -37,27 +43,31 @@ const CHIP_ROW_GAP = 10;
 type SortKey = '거리순' | '여유순' | '인기순';
 
 /** 검색바 아래 좌석 필터 — 한 번에 하나만 선택 (다시 누르면 해제) */
-type SeatFilter = 'all' | 'available' | 'full';
+type SeatFilter = SeatStatus | 'all';
 
+// 라벨은 statusLabel을 그대로 써 카드·마커의 좌석 표기와 어긋나지 않게 한다
 const SEAT_FILTER_CHIPS: {
-  key: Exclude<SeatFilter, 'all'>;
+  key: SeatStatus;
   label: string;
   icon: string;
   accent: string;
 }[] = [
   {
     key: 'available',
-    label: '자리있음',
+    label: statusLabel('available'),
     icon: 'checkmark-circle',
     accent: colors.goodText,
   },
-  { key: 'full', label: '만석', icon: 'close-circle', accent: colors.badText },
+  {
+    key: 'full',
+    label: statusLabel('full'),
+    icon: 'close-circle',
+    accent: colors.badText,
+  },
 ];
 
 function matchesSeatFilter(cafe: Cafe, filter: SeatFilter): boolean {
-  if (filter === 'available') return cafe.seatsAvailable > 0;
-  if (filter === 'full') return cafe.seatsAvailable <= 0;
-  return true;
+  return filter === 'all' || seatStatus(cafe.seatsAvailable) === filter;
 }
 
 export default function HomeScreen() {
@@ -140,7 +150,7 @@ export default function HomeScreen() {
   );
 
   /** 같은 칩을 다시 누르면 해제, 다른 칩을 누르면 그쪽으로 교체 */
-  const toggleSeatFilter = (key: Exclude<SeatFilter, 'all'>) =>
+  const toggleSeatFilter = (key: SeatStatus) =>
     setSeatFilter((prev) => (prev === key ? 'all' : key));
 
   const onToggleBookmark = (cafe: Cafe) => {
@@ -212,7 +222,6 @@ export default function HomeScreen() {
 
       {/* 좌석 필터 칩 — 네이버지도처럼 검색바 바로 아래, 지도 위에 띄움 */}
       <View
-        pointerEvents="box-none"
         style={[
           styles.seatFilterRow,
           { top: insets.top + SEARCH_BAR_TOP + SEARCH_BAR_H + CHIP_ROW_GAP },
@@ -378,6 +387,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     zIndex: 5,
+    // 칩 사이 빈 공간으로 지도 제스처가 통과하도록 (prop 형태는 deprecated)
+    pointerEvents: 'box-none',
   },
   seatFilterChip: {
     // 지도 위에 떠 있으므로 검색바와 같은 그림자를 준다
