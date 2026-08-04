@@ -37,9 +37,6 @@ export type Cafe = {
   mapY: number;
 };
 
-/** @deprecated use HOME_FILTER_AMENITIES from constants/amenities */
-export { HOME_FILTER_AMENITIES as FILTERS } from '../constants/amenities';
-
 // 기준점: 서울대입구역 2호선
 export const MAP_CENTER = { lat: 37.481247, lng: 126.952739 };
 

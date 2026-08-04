@@ -30,15 +30,6 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="search"
-        options={{
-          title: '검색',
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="search" size={24} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="mypage"
         options={{
           title: '마이페이지',

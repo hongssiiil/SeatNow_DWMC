@@ -21,18 +21,6 @@ export type Amenity = {
   accent?: string;
 };
 
-export const AMENITY_CATEGORY_META: {
-  id: AmenityCategory;
-  label: string;
-  accessibilityLabel: string;
-}[] = [
-  { id: 'seat-type', label: '좌석 유형', accessibilityLabel: 'seat-type' },
-  { id: 'noise-level', label: '분위기', accessibilityLabel: 'noise-level' },
-  { id: 'facility', label: '이용 편의', accessibilityLabel: 'outlet' },
-  { id: 'time-limit', label: '이용 조건', accessibilityLabel: 'time-limit' },
-  { id: 'congestion-filter', label: '혼잡도', accessibilityLabel: 'congestion-filter' },
-];
-
 /**
  * 실제 데이터 전수 조사 결과 (supabase/setup.sql 시드 + data.ts TAG_POOL)
  * tags: 1인석, 4인석, 소파석, 콘센트, 내부 화장실, 조용한, 주차 가능, 시간제한 없음, 노트북 작업
@@ -173,33 +161,10 @@ export const AMENITIES: Amenity[] = [
   },
 ];
 
-export const AMENITY_BY_ID = Object.fromEntries(
-  AMENITIES.map((a) => [a.id, a])
-) as Record<string, Amenity>;
-
 /** mock 시드용 태그 풀 (noise/congestion 제외) */
 export const TAG_POOL = AMENITIES.filter(
   (a) => a.category !== 'noise-level' && a.category !== 'congestion-filter'
 ).map((a) => a.match);
-
-/** 홈 가로 칩 — 혼잡도 여유 + 주요 시설 */
-export const HOME_FILTER_AMENITIES: Amenity[] = [
-  AMENITY_BY_ID['congestion-good'],
-  AMENITY_BY_ID['outlet'],
-  AMENITY_BY_ID['seat-1'],
-  AMENITY_BY_ID['seat-2'],
-  AMENITY_BY_ID['seat-4'],
-  AMENITY_BY_ID['seat-sofa'],
-  AMENITY_BY_ID['toilet'],
-  AMENITY_BY_ID['noise-quiet'],
-  AMENITY_BY_ID['parking'],
-  AMENITY_BY_ID['no-time-limit'],
-  AMENITY_BY_ID['laptop'],
-];
-
-export function amenitiesByCategory(category: AmenityCategory): Amenity[] {
-  return AMENITIES.filter((a) => a.category === category);
-}
 
 export function cafeHasAmenity(cafe: Cafe, amenity: Amenity): boolean {
   if (amenity.category === 'congestion-filter') {
@@ -219,28 +184,4 @@ export function getCafeAmenityTags(cafe: Cafe): Amenity[] {
   return AMENITIES.filter(
     (a) => a.category !== 'congestion-filter' && cafeHasAmenity(cafe, a)
   );
-}
-
-/**
- * 카테고리 내 OR, 카테고리 간 AND
- */
-export function cafeMatchesAmenityFilters(
-  cafe: Cafe,
-  selectedIds: string[]
-): boolean {
-  if (selectedIds.length === 0) return true;
-
-  const byCategory = new Map<AmenityCategory, Amenity[]>();
-  for (const id of selectedIds) {
-    const a = AMENITY_BY_ID[id];
-    if (!a) continue;
-    const list = byCategory.get(a.category) ?? [];
-    list.push(a);
-    byCategory.set(a.category, list);
-  }
-
-  for (const group of byCategory.values()) {
-    if (!group.some((a) => cafeHasAmenity(cafe, a))) return false;
-  }
-  return true;
 }

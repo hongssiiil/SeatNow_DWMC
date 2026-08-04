@@ -6,7 +6,6 @@ import {
   FlatList,
   PanResponder,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -16,9 +15,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CafeMap, CafeMapHandle } from '../../components/CafeMap';
 import { CafeCard } from '../../components/CafeCard';
-import { FilterChip } from '../../components/FilterChip';
-import { FILTERS, Cafe } from '../../lib/data';
-import { cafeMatchesAmenityFilters } from '../../constants/amenities';
+import { Cafe } from '../../lib/data';
 import { useApp } from '../../lib/store';
 import { colors, radius } from '../../lib/theme';
 
@@ -40,7 +37,6 @@ export default function HomeScreen() {
   const { cafes, now, bookmarks, toggleBookmark, user, visitCounts } = useApp();
   const mapRef = useRef<CafeMapHandle>(null);
 
-  const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [sort, setSort] = useState<SortKey>('거리순');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [bookmarkOnly, setBookmarkOnly] = useState(false);
@@ -99,20 +95,12 @@ export default function HomeScreen() {
   const nearbyCafes = useMemo(() => {
     let list = cafes.filter((c) => c.nearby);
     if (bookmarkOnly) list = cafes.filter((c) => bookmarks.includes(c.id));
-    if (activeFilters.length > 0) {
-      list = list.filter((c) => cafeMatchesAmenityFilters(c, activeFilters));
-    }
     return [...list].sort((a, b) => {
       if (sort === '거리순') return a.walkMin - b.walkMin;
       if (sort === '인기순') return (b.likeCount ?? 0) - (a.likeCount ?? 0);
       return b.seatsAvailable / b.seatsTotal - a.seatsAvailable / a.seatsTotal;
     });
-  }, [cafes, activeFilters, sort, bookmarkOnly, bookmarks]);
-
-  const toggleFilter = (key: string) =>
-    setActiveFilters((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
+  }, [cafes, sort, bookmarkOnly, bookmarks]);
 
   const onToggleBookmark = (cafe: Cafe) => {
     if (!toggleBookmark(cafe.id)) {
@@ -154,7 +142,7 @@ export default function HomeScreen() {
       {/* 상단 검색바 — 네이버지도 스타일 원바 (로고 아이콘 + 검색) */}
       <Pressable
         style={[styles.searchBar, { top: insets.top + 8 }]}
-        onPress={() => router.push('/(tabs)/search')}
+        onPress={() => router.push('/search')}
       >
         <View style={styles.logoPin}>
           <Ionicons name="cafe" size={16} color={colors.white} />
@@ -247,28 +235,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* 필터 칩 */}
-        <View style={styles.chipsWrap}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.chipsScroll}
-            contentContainerStyle={styles.chipsRow}
-          >
-            {FILTERS.map((f) => (
-              <FilterChip
-                key={f.id}
-                label={f.label}
-                icon={f.icon}
-                iconSet={f.iconSet}
-                accent={f.accent}
-                active={activeFilters.includes(f.id)}
-                onPress={() => toggleFilter(f.id)}
-                style={styles.chipItem}
-              />
-            ))}
-          </ScrollView>
-        </View>
+        <View style={styles.listDivider} />
 
         {/* 카페 리스트 */}
         <FlatList
@@ -279,7 +246,9 @@ export default function HomeScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="cafe-outline" size={36} color={colors.muted} />
-              <Text style={styles.emptyText}>조건에 맞는 카페가 없어요</Text>
+              <Text style={styles.emptyText}>
+                {bookmarkOnly ? '저장한 카페가 없어요' : '주변에 카페가 없어요'}
+              </Text>
             </View>
           }
           renderItem={({ item }) => (
@@ -428,25 +397,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.ink,
   },
-  chipsWrap: {
+  // 필터 칩을 없앤 뒤 헤더와 리스트를 가르던 경계선을 대체
+  listDivider: {
     borderTopWidth: 1,
-    borderBottomWidth: 1,
     borderColor: colors.divider,
     marginBottom: 12,
-    overflow: 'visible',
-  },
-  chipsScroll: {
-    flexGrow: 0,
-    minHeight: 68,
-  },
-  chipsRow: {
-    paddingLeft: 20,
-    paddingRight: 28,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  chipItem: {
-    marginRight: 8,
   },
   empty: {
     alignItems: 'center',
