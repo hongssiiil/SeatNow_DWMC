@@ -15,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CafeMap, CafeMapHandle } from '../../components/CafeMap';
 import { CafeCard } from '../../components/CafeCard';
+import { FilterChip } from '../../components/FilterChip';
 import { Cafe } from '../../lib/data';
 import { useApp } from '../../lib/store';
 import { colors, radius } from '../../lib/theme';
@@ -28,8 +29,36 @@ const SNAPS = [SHEET_EXPANDED, SHEET_COLLAPSED, SHEET_HIDDEN];
 /** 현위치 버튼이 시트 위로 뜰 여백 */
 const LOC_BTN_SIZE = 48;
 const LOC_BTN_GAP = 12;
+/** 상단 검색바 — 좌석 필터 칩을 바로 아래에 붙이려면 높이를 알아야 한다 */
+const SEARCH_BAR_H = 54;
+const SEARCH_BAR_TOP = 8;
+const CHIP_ROW_GAP = 10;
 
 type SortKey = '거리순' | '여유순' | '인기순';
+
+/** 검색바 아래 좌석 필터 — 한 번에 하나만 선택 (다시 누르면 해제) */
+type SeatFilter = 'all' | 'available' | 'full';
+
+const SEAT_FILTER_CHIPS: {
+  key: Exclude<SeatFilter, 'all'>;
+  label: string;
+  icon: string;
+  accent: string;
+}[] = [
+  {
+    key: 'available',
+    label: '자리있음',
+    icon: 'checkmark-circle',
+    accent: colors.goodText,
+  },
+  { key: 'full', label: '만석', icon: 'close-circle', accent: colors.badText },
+];
+
+function matchesSeatFilter(cafe: Cafe, filter: SeatFilter): boolean {
+  if (filter === 'available') return cafe.seatsAvailable > 0;
+  if (filter === 'full') return cafe.seatsAvailable <= 0;
+  return true;
+}
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -37,6 +66,7 @@ export default function HomeScreen() {
   const { cafes, now, bookmarks, toggleBookmark, user, visitCounts } = useApp();
   const mapRef = useRef<CafeMapHandle>(null);
 
+  const [seatFilter, setSeatFilter] = useState<SeatFilter>('all');
   const [sort, setSort] = useState<SortKey>('거리순');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [bookmarkOnly, setBookmarkOnly] = useState(false);
@@ -95,12 +125,23 @@ export default function HomeScreen() {
   const nearbyCafes = useMemo(() => {
     let list = cafes.filter((c) => c.nearby);
     if (bookmarkOnly) list = cafes.filter((c) => bookmarks.includes(c.id));
+    list = list.filter((c) => matchesSeatFilter(c, seatFilter));
     return [...list].sort((a, b) => {
       if (sort === '거리순') return a.walkMin - b.walkMin;
       if (sort === '인기순') return (b.likeCount ?? 0) - (a.likeCount ?? 0);
       return b.seatsAvailable / b.seatsTotal - a.seatsAvailable / a.seatsTotal;
     });
-  }, [cafes, sort, bookmarkOnly, bookmarks]);
+  }, [cafes, sort, bookmarkOnly, bookmarks, seatFilter]);
+
+  // 지도 마커는 주변 여부와 무관하게 전체 카페 대상 — 좌석 필터만 적용
+  const mapCafes = useMemo(
+    () => cafes.filter((c) => matchesSeatFilter(c, seatFilter)),
+    [cafes, seatFilter]
+  );
+
+  /** 같은 칩을 다시 누르면 해제, 다른 칩을 누르면 그쪽으로 교체 */
+  const toggleSeatFilter = (key: Exclude<SeatFilter, 'all'>) =>
+    setSeatFilter((prev) => (prev === key ? 'all' : key));
 
   const onToggleBookmark = (cafe: Cafe) => {
     if (!toggleBookmark(cafe.id)) {
@@ -132,7 +173,7 @@ export default function HomeScreen() {
       {/* 지도 (dev build: 네이버 지도 / Expo Go: 목업) */}
       <CafeMap
         ref={mapRef}
-        cafes={cafes}
+        cafes={mapCafes}
         bookmarkedIds={bookmarks}
         onPressMarker={(cafe) => router.push(`/cafe/${cafe.id}`)}
         onMapInteract={hideSheet}
@@ -141,7 +182,7 @@ export default function HomeScreen() {
 
       {/* 상단 검색바 — 네이버지도 스타일 원바 (로고 아이콘 + 검색) */}
       <Pressable
-        style={[styles.searchBar, { top: insets.top + 8 }]}
+        style={[styles.searchBar, { top: insets.top + SEARCH_BAR_TOP }]}
         onPress={() => router.push('/search')}
       >
         <View style={styles.logoPin}>
@@ -168,6 +209,29 @@ export default function HomeScreen() {
           />
         </Pressable>
       </Pressable>
+
+      {/* 좌석 필터 칩 — 네이버지도처럼 검색바 바로 아래, 지도 위에 띄움 */}
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.seatFilterRow,
+          { top: insets.top + SEARCH_BAR_TOP + SEARCH_BAR_H + CHIP_ROW_GAP },
+        ]}
+      >
+        {SEAT_FILTER_CHIPS.map((chip) => (
+          <FilterChip
+            key={chip.key}
+            accessibilityLabel={`seat-filter-${chip.key}`}
+            label={chip.label}
+            icon={chip.icon}
+            iconSet="ion"
+            accent={chip.accent}
+            active={seatFilter === chip.key}
+            onPress={() => toggleSeatFilter(chip.key)}
+            style={styles.seatFilterChip}
+          />
+        ))}
+      </View>
 
       {/* 현위치 버튼 — 시트와 겹치지 않게 시트 바로 위 */}
       <Animated.View
@@ -247,7 +311,11 @@ export default function HomeScreen() {
             <View style={styles.empty}>
               <Ionicons name="cafe-outline" size={36} color={colors.muted} />
               <Text style={styles.emptyText}>
-                {bookmarkOnly ? '저장한 카페가 없어요' : '주변에 카페가 없어요'}
+                {bookmarkOnly
+                  ? '저장한 카페가 없어요'
+                  : seatFilter !== 'all'
+                    ? '조건에 맞는 카페가 없어요'
+                    : '주변에 카페가 없어요'}
               </Text>
             </View>
           }
@@ -276,7 +344,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    height: 54,
+    height: SEARCH_BAR_H,
     backgroundColor: colors.white,
     borderRadius: radius.pill,
     flexDirection: 'row',
@@ -302,6 +370,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.muted,
     flexShrink: 1,
+  },
+  seatFilterRow: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    gap: 8,
+    zIndex: 5,
+  },
+  seatFilterChip: {
+    // 지도 위에 떠 있으므로 검색바와 같은 그림자를 준다
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
   locationBtnWrap: {
     position: 'absolute',
