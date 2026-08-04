@@ -171,10 +171,10 @@ export const CafeMap = forwardRef<
               text: saved
                 ? full
                   ? '저장 · 만석'
-                  : `저장 · 여유 ${cafe.seatsAvailable}석`
+                  : '저장 · 자리 있음'
                 : full
                   ? '만석'
-                  : `여유 ${cafe.seatsAvailable}석`,
+                  : '자리 있음',
               textSize: 10,
               color: saved ? '#C4574C' : full ? '#C4574C' : '#3E7A52',
               haloColor: '#FFFFFF',

@@ -57,22 +57,23 @@ export const radius = {
   pill: 999,
 };
 
-export type SeatStatus = 'good' | 'mid' | 'bad';
+/**
+ * 좌석 현황은 "자리 있음 / 만석" 2단계로만 판단한다.
+ * 중간 단계(보통·혼잡)를 두면 기준이 자의적이고, 사용자가 실제로 알고 싶은 건
+ * "지금 가면 앉을 수 있나"뿐이라 이분법으로 통일했다.
+ */
+export type SeatStatus = 'available' | 'full';
 
-export function seatStatus(available: number, total: number): SeatStatus {
-  if (available <= 0) return 'bad';
-  if (available / total >= 0.3) return 'good';
-  return 'mid';
+export function seatStatus(available: number): SeatStatus {
+  return available > 0 ? 'available' : 'full';
 }
 
 export function statusLabel(s: SeatStatus): string {
-  return s === 'good' ? '여유' : s === 'mid' ? '보통' : '혼잡';
+  return s === 'available' ? '자리 있음' : '만석';
 }
 
 export function statusColors(s: SeatStatus) {
-  if (s === 'good')
+  if (s === 'available')
     return { bg: colors.goodBg, text: colors.goodText, bar: colors.barGreen };
-  if (s === 'mid')
-    return { bg: colors.midBg, text: colors.midText, bar: colors.midBar };
   return { bg: colors.badBg, text: colors.badText, bar: colors.badBar };
 }
