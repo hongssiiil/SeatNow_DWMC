@@ -38,6 +38,8 @@ export type CafeRow = {
   hours_weekend: string;
   last_updated: string;
   like_count?: number;
-  /** 좌석 현황 판정 기준 — 'full'이면 만석, 비어 있으면 자리 있음 */
-  congestion?: Congestion;
+  /** 사장님 앱이 쓰는 좌석 현황. 'full'=만석, 'available'=자리 있음, null=미설정 */
+  congestion?: string | null;
+  /** 사장님 앱의 리마인더 기준값 — 고객 앱은 읽기만 한다 */
+  congestion_updated_at?: string | null;
 };

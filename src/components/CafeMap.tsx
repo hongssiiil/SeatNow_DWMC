@@ -8,13 +8,15 @@ import React, {
 } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Cafe, INITIAL_CAMERA } from '../lib/data';
-import { colors, seatStatus } from '../lib/theme';
+import { colors, seatStatus, statusLabel } from '../lib/theme';
 import { MockMap } from './MockMap';
 
-// 지도 마커 (#3A8A63 여유 / 회색 만석 / 빨강 저장) — 얇은 흰 테두리
+// 지도 마커 (초록 자리있음 / 회색 만석 / 빨강 저장) — 얇은 흰 테두리
 const MARKER_AVAILABLE = require('../../assets/images/marker-available.png');
 const MARKER_FULL = require('../../assets/images/marker-full.png');
 const MARKER_SAVED = require('../../assets/images/marker-saved.png');
+// 사장님이 현황을 알려주지 않은 가게 — 속 빈 마커로 단정을 피한다
+const MARKER_UNKNOWN = require('../../assets/images/marker-unknown.png');
 
 let NaverMap: any = null;
 try {
@@ -150,8 +152,16 @@ export const CafeMap = forwardRef<
     >
       {cafes.map((cafe) => {
         const saved = savedSet.has(cafe.id);
-        const full = seatStatus(cafe.congestion) === 'full';
-        const image = saved ? MARKER_SAVED : full ? MARKER_FULL : MARKER_AVAILABLE;
+        const status = seatStatus(cafe.congestion);
+        const image = saved
+          ? MARKER_SAVED
+          : status === 'full'
+            ? MARKER_FULL
+            : status === 'available'
+              ? MARKER_AVAILABLE
+              : MARKER_UNKNOWN;
+        // 미설정 가게를 '자리 있음'으로 단정하지 않는다
+        const label = statusLabel(status);
         return (
           <NaverMapMarkerOverlay
             key={cafe.id}
@@ -168,15 +178,15 @@ export const CafeMap = forwardRef<
               haloColor: '#F4F3EC',
             }}
             subCaption={{
-              text: saved
-                ? full
-                  ? '저장 · 만석'
-                  : '저장 · 자리 있음'
-                : full
-                  ? '만석'
-                  : '자리 있음',
+              text: saved ? `저장 · ${label}` : label,
               textSize: 10,
-              color: saved ? '#C4574C' : full ? '#C4574C' : '#3E7A52',
+              color: saved
+                ? '#C4574C'
+                : status === 'full'
+                  ? '#C4574C'
+                  : status === 'available'
+                    ? '#3E7A52'
+                    : colors.sub,
               haloColor: '#FFFFFF',
             }}
             onTap={() => onPressMarker?.(cafe)}

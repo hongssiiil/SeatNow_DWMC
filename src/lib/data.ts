@@ -131,6 +131,11 @@ export const INITIAL_CAFES: Cafe[] = (rawCafes as any[]).map((raw) => {
   };
 });
 
+/** 'available' | 'full' 외의 값(오타·신규 값·빈 문자열)은 모두 미설정으로 본다 */
+export function normalizeCongestion(value: unknown): Congestion {
+  return value === 'available' || value === 'full' ? value : null;
+}
+
 /** Supabase cafes 테이블 row → 앱 Cafe 변환 */
 export function cafeFromRow(row: {
   id: string;
@@ -150,7 +155,8 @@ export function cafeFromRow(row: {
   hours_weekend: string;
   last_updated: string;
   like_count?: number;
-  congestion?: Congestion;
+  /** DB check 제약이 있지만, 예상 밖 값이 와도 앱이 오판하지 않게 문자열로 받아 정규화한다 */
+  congestion?: string | null;
 }): Cafe {
   const distM = haversineM(MAP_CENTER.lat, MAP_CENTER.lng, row.lat, row.lng);
   const walkMin = Math.max(1, Math.round(distM / WALK_M_PER_MIN));
@@ -174,7 +180,7 @@ export function cafeFromRow(row: {
     noise: row.noise,
     nearby: walkMin <= 10,
     likeCount: row.like_count ?? 0,
-    congestion: row.congestion ?? null,
+    congestion: normalizeCongestion(row.congestion),
     // 네이버 Place API 연동 전: 평일/주말 문자열로 유틸 계산 (isOpen undefined)
     isOpen: undefined,
     mapX: ((row.lng - LNG_MIN) / (LNG_MAX - LNG_MIN)) * 100,

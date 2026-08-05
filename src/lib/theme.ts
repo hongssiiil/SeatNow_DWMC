@@ -58,30 +58,47 @@ export const radius = {
 };
 
 /**
- * 좌석 현황은 "자리 있음 / 만석" 2단계로만 판단한다.
+ * 좌석 현황은 사장님이 알려준 "자리 있음 / 만석" 2단계와,
+ * 아직 알려주지 않은 'unknown'으로 판단한다.
  * 중간 단계(보통·혼잡)를 두면 기준이 자의적이고, 사용자가 실제로 알고 싶은 건
  * "지금 가면 앉을 수 있나"뿐이라 이분법으로 통일했다.
+ * 'unknown'을 '자리 있음'으로 뭉개지 않는 이유: 사장님이 한 번도 설정하지 않은
+ * 가게를 근거 없이 긍정 표시하면 헛걸음을 유발한다.
  */
-export type SeatStatus = 'available' | 'full';
+export type SeatStatus = 'available' | 'full' | 'unknown';
 
-/** DB cafes.congestion 컬럼 값. 값이 없으면(null) 자리 있음으로 본다. */
-export type Congestion = 'full' | null;
+/** DB cafes.congestion 컬럼 값. null이면 사장님이 아직 설정하지 않았다는 뜻. */
+export type Congestion = 'available' | 'full' | null;
 
 /**
  * 좌석 현황의 단일 판정 기준.
- * seats_available 집계 대신 congestion 컬럼을 신뢰한다 — 좌석 수는 실시간성이
- * 떨어져 congestion과 어긋날 수 있고, 이 버전에서는 congestion이 정답이다.
+ * seats_available 집계 대신 congestion 컬럼을 신뢰한다 — 좌석 수는 사장님 앱이
+ * 관리하지 않아 실시간성이 없고, congestion과 어긋날 수 있다.
  */
 export function seatStatus(congestion: Congestion | undefined): SeatStatus {
-  return congestion === 'full' ? 'full' : 'available';
+  if (congestion === 'full') return 'full';
+  if (congestion === 'available') return 'available';
+  return 'unknown';
+}
+
+/** 정렬용 가중치 — 자리 있음 > 정보 없음 > 만석 */
+export function seatStatusRank(s: SeatStatus): number {
+  if (s === 'available') return 1;
+  if (s === 'unknown') return 0.5;
+  return 0;
 }
 
 export function statusLabel(s: SeatStatus): string {
-  return s === 'available' ? '자리 있음' : '만석';
+  if (s === 'available') return '자리 있음';
+  if (s === 'full') return '만석';
+  return '정보 없음';
 }
 
 export function statusColors(s: SeatStatus) {
   if (s === 'available')
     return { bg: colors.goodBg, text: colors.goodText, bar: colors.barGreen };
-  return { bg: colors.badBg, text: colors.badText, bar: colors.badBar };
+  if (s === 'full')
+    return { bg: colors.badBg, text: colors.badText, bar: colors.badBar };
+  // 정보 없음 — 긍정도 부정도 아닌 중성 색
+  return { bg: colors.divider, text: colors.sub, bar: colors.sage };
 }

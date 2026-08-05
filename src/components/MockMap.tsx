@@ -71,8 +71,10 @@ export function MockMap({
       </View>
       {/* 카페 마커 — 저장한 곳은 빨강 */}
       {cafes.map((cafe) => {
-        const full = seatStatus(cafe.congestion) === 'full';
+        const status = seatStatus(cafe.congestion);
         const saved = savedSet.has(cafe.id);
+        // 미설정('정보 없음')은 속 빈 마커 — 자리 있음으로 단정하지 않는다
+        const unknown = status === 'unknown' && !saved;
         return (
           <Pressable
             key={cafe.id}
@@ -82,11 +84,16 @@ export function MockMap({
             <View
               style={[
                 styles.marker,
-                full && !saved && { backgroundColor: colors.markerFull },
+                status === 'full' && !saved && { backgroundColor: colors.markerFull },
+                unknown && styles.markerUnknown,
                 saved && styles.markerSaved,
               ]}
             >
-              <Ionicons name="cafe" size={15} color={colors.white} />
+              <Ionicons
+                name="cafe"
+                size={15}
+                color={unknown ? colors.sage : colors.white}
+              />
             </View>
             {showLabels && <Text style={styles.markerLabel}>{cafe.name}</Text>}
           </Pressable>
@@ -221,6 +228,12 @@ const styles = StyleSheet.create({
   },
   markerSaved: {
     backgroundColor: '#EB5757',
+  },
+  // 정보 없음 — 흰 채움 + 세이지 테두리 (속 빈 모양)
+  markerUnknown: {
+    backgroundColor: colors.white,
+    borderColor: colors.sage,
+    borderWidth: 2,
   },
   markerLabel: {
     marginTop: 3,
