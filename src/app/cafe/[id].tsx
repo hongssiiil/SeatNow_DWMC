@@ -13,7 +13,6 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBadge } from '../../components/CafeCard';
-import { ReviewModal } from '../../components/ReviewModal';
 import { getCafeAmenityTags } from '../../constants/amenities';
 import { updatedLabel } from '../../lib/data';
 import {
@@ -22,13 +21,9 @@ import {
   useSeats,
 } from '../../lib/seats';
 import {
-  CafeReview,
   fetchLiked,
-  fetchReviews,
   fetchVisitCount,
-  submitReview,
   toggleLike,
-  updateReview,
 } from '../../lib/social';
 import { useApp } from '../../lib/store';
 import { colors, radius, seatStatus, statusColors, statusLabel } from '../../lib/theme';
@@ -53,14 +48,9 @@ export default function CafeDetailScreen() {
   const [likeCount, setLikeCount] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
 
-  const [reviews, setReviews] = useState<CafeReview[]>([]);
   /** visitCounts: 이 카페 테이크인 완료(PoC) 횟수 */
   const [localVisitCount, setLocalVisitCount] = useState(0);
 
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const [reviewRating, setReviewRating] = useState(0);
-  const [reviewText, setReviewText] = useState('');
-  const [reviewBusy, setReviewBusy] = useState(false);
 
   const cafe = cafes.find((c) => c.id === id);
 
@@ -79,9 +69,6 @@ export default function CafeDetailScreen() {
 
   const refreshSocial = useCallback(async () => {
     if (!cafe) return;
-    const list = await fetchReviews(cafe.id);
-    setReviews(list);
-
     if (!user) {
       setLiked(false);
       setLocalVisitCount(0);
@@ -118,59 +105,6 @@ export default function CafeDetailScreen() {
       { text: '취소', style: 'cancel' },
       { text: '로그인', onPress: () => router.replace('/') },
     ]);
-  };
-
-  /** 내가 이 카페에 쓴 리뷰 (있으면 수정 모드) */
-  const myReview = user
-    ? (reviews.find((r) => r.userKey === user.key) ?? null)
-    : null;
-
-  const openReviewModal = () => {
-    if (!user) {
-      requireLogin('리뷰를 쓰려면 로그인해 주세요.');
-      return;
-    }
-    // 리뷰 자격은 실제 방문(테이크인)으로만 부여한다 — 마이페이지에서 쓰던 규칙과 동일
-    if (localVisitCount < 1) {
-      Alert.alert(
-        '아직 리뷰를 쓸 수 없어요',
-        '이 카페에서 테이크인한 뒤에 리뷰를 남길 수 있어요.'
-      );
-      return;
-    }
-    setReviewRating(myReview?.rating ?? 0);
-    setReviewText(myReview?.text ?? '');
-    setReviewOpen(true);
-  };
-
-  const onSubmitReview = async () => {
-    if (!user || reviewRating < 1 || reviewBusy) return;
-    setReviewBusy(true);
-    const saved = myReview
-      ? await updateReview({
-          reviewId: myReview.id,
-          cafeId: cafe.id,
-          userKey: user.key,
-          nickname: user.name,
-          rating: reviewRating,
-          text: reviewText,
-        })
-      : await submitReview({
-          cafeId: cafe.id,
-          userKey: user.key,
-          nickname: user.name,
-          rating: reviewRating,
-          text: reviewText,
-        });
-    setReviewBusy(false);
-    if (!saved) {
-      Alert.alert('등록 실패', '잠시 후 다시 시도해 주세요.');
-      return;
-    }
-    setReviewOpen(false);
-    setReviewRating(0);
-    setReviewText('');
-    refreshSocial();
   };
 
   const onBookmark = () => {
@@ -473,63 +407,6 @@ export default function CafeDetailScreen() {
             </View>
           </View>
 
-          {/* review-list */}
-          <View style={styles.reviewHeaderRow}>
-            <Text style={[styles.sectionTitle, styles.reviewHeaderTitle]}>
-              리뷰 <Text style={styles.reviewCount}>{reviews.length}</Text>
-            </Text>
-            <Pressable
-              accessibilityLabel={myReview ? 'edit-review-btn' : 'review-btn'}
-              style={[styles.reviewWriteBtn, myReview && styles.editReviewBtn]}
-              onPress={openReviewModal}
-              hitSlop={6}
-            >
-              <Ionicons
-                name={myReview ? 'create-outline' : 'star-outline'}
-                size={14}
-                color={myReview ? colors.green : colors.white}
-              />
-              <Text
-                style={[
-                  styles.reviewWriteBtnText,
-                  myReview && styles.editReviewBtnText,
-                ]}
-              >
-                {myReview ? '리뷰 수정' : '리뷰 쓰기'}
-              </Text>
-            </Pressable>
-          </View>
-          <View accessibilityLabel="review-list" style={styles.reviewList}>
-            {reviews.length === 0 ? (
-              <Text style={styles.reviewEmpty}>아직 작성된 리뷰가 없어요</Text>
-            ) : (
-              reviews.map((r, idx) => (
-                <View
-                  key={r.id}
-                  accessibilityLabel="review-item"
-                  style={[
-                    styles.reviewItem,
-                    idx < reviews.length - 1 && styles.reviewItemBorder,
-                  ]}
-                >
-                  <View style={styles.reviewItemTop}>
-                    <Text style={styles.reviewNickname}>{r.nickname}</Text>
-                    <View style={styles.reviewStars}>
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <Ionicons
-                          key={n}
-                          name={n <= r.rating ? 'star' : 'star-outline'}
-                          size={14}
-                          color={STAR}
-                        />
-                      ))}
-                    </View>
-                  </View>
-                  {!!r.text && <Text style={styles.reviewBody}>{r.text}</Text>}
-                </View>
-              ))
-            )}
-          </View>
         </View>
       </ScrollView>
 
@@ -583,19 +460,6 @@ export default function CafeDetailScreen() {
           </View>
         </View>
       </Modal>
-
-      <ReviewModal
-        visible={reviewOpen}
-        cafeName={cafe.name}
-        editing={!!myReview}
-        rating={reviewRating}
-        text={reviewText}
-        busy={reviewBusy}
-        onChangeRating={setReviewRating}
-        onChangeText={setReviewText}
-        onClose={() => setReviewOpen(false)}
-        onSubmit={onSubmitReview}
-      />
     </View>
   );
 }

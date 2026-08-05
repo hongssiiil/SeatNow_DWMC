@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
+import { isSeatAlertEnabled, setSeatAlertEnabled } from './pushPrefs';
 import { supabase } from './supabase';
 
 /**
@@ -69,6 +70,8 @@ function getProjectId(): string | null {
  */
 export async function registerPushToken(userKey: string): Promise<void> {
   try {
+    // 사용자가 설정에서 끈 상태면 등록하지 않는다
+    if (!isSeatAlertEnabled()) return;
     // 시뮬레이터·에뮬레이터는 푸시 토큰을 발급받을 수 없다
     if (!Device.isDevice) return;
     if (!supabase) return; // 목업 모드
@@ -124,6 +127,35 @@ export async function unregisterPushToken(): Promise<void> {
   } catch (e: any) {
     console.log('[push] 토큰 삭제 중 오류:', e?.message ?? e);
   }
+}
+
+/**
+ * 설정 화면의 "빈자리 알림" 스위치가 호출한다.
+ *
+ * 켜기: 설정을 저장하고 토큰을 등록한다. OS 알림 권한이 거부돼 있으면 등록이
+ *       불가능하므로 false를 돌려주고, 호출부가 사용자에게 안내한다.
+ * 끄기: 설정을 저장하고 이 기기의 토큰 행을 지운다.
+ */
+export async function setSeatAlert(
+  enabled: boolean,
+  userKey: string | null
+): Promise<boolean> {
+  setSeatAlertEnabled(enabled);
+  if (!enabled) {
+    await unregisterPushToken();
+    return true;
+  }
+  if (!userKey) return true; // 로그인 후 login()에서 등록된다
+  await registerPushToken(userKey);
+  // 실기기에서 권한이 없으면 토큰이 없다 → 켜지 못한 것으로 알린다
+  if (Device.isDevice && !registeredToken) {
+    const perm = await Notifications.getPermissionsAsync();
+    if (!perm.granted) {
+      setSeatAlertEnabled(false);
+      return false;
+    }
+  }
+  return true;
 }
 
 /** 사장님 앱 Edge Function이 보내는 payload */

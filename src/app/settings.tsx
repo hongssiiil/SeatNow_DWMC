@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,15 +13,38 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { deleteAccount } from '../lib/account';
+import { isSeatAlertEnabled } from '../lib/pushPrefs';
+import { setSeatAlert } from '../lib/pushToken';
 import { useApp } from '../lib/store';
 import { colors, radius } from '../lib/theme';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { user, logout } = useApp();
-  const [notifOn, setNotifOn] = useState(true);
-  const [locationOn, setLocationOn] = useState(true);
+  // 저장된 설정을 초기값으로 읽는다 (기기에 남아 있는 사용자의 선택)
+  const [notifOn, setNotifOn] = useState(() => isSeatAlertEnabled());
+  const [notifBusy, setNotifBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  const onToggleNotif = async (next: boolean) => {
+    if (notifBusy) return;
+    setNotifBusy(true);
+    setNotifOn(next); // 낙관적 반영
+    const ok = await setSeatAlert(next, user?.key ?? null);
+    setNotifBusy(false);
+    if (!ok) {
+      // OS 권한이 거부된 상태 — 앱 안에서는 켤 수 없다
+      setNotifOn(false);
+      Alert.alert(
+        '알림 권한이 필요해요',
+        '기기 설정에서 Sitnow의 알림을 허용해 주세요.',
+        [
+          { text: '취소', style: 'cancel' },
+          { text: '설정 열기', onPress: () => Linking.openSettings() },
+        ]
+      );
+    }
+  };
 
   const onLogout = () => {
     Alert.alert('로그아웃', '정말 로그아웃할까요?', [
@@ -62,7 +86,7 @@ export default function SettingsScreen() {
   const onDeleteAccount = () => {
     Alert.alert(
       '계정 삭제',
-      '저장한 카페, 테이크인 기록, 리뷰가 모두 삭제되며 되돌릴 수 없어요.',
+      '저장한 카페, 좋아요, 테이크인 기록이 모두 삭제되며 되돌릴 수 없어요.',
       [
         { text: '취소', style: 'cancel' },
         {
@@ -111,30 +135,37 @@ export default function SettingsScreen() {
 
         <View style={styles.card}>
           <View style={styles.row}>
-            <Text style={styles.rowLabel}>빈자리 알림</Text>
+            <View>
+              <Text style={styles.rowLabel}>빈자리 알림</Text>
+              <Text style={styles.rowHint}>저장한 카페에 자리가 나면 알려드려요</Text>
+            </View>
             <Switch
               value={notifOn}
-              onValueChange={setNotifOn}
+              onValueChange={onToggleNotif}
+              disabled={notifBusy}
               trackColor={{ true: colors.green, false: colors.track }}
               thumbColor={colors.white}
             />
           </View>
           <View style={styles.divider} />
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>위치 서비스</Text>
-            <Switch
-              value={locationOn}
-              onValueChange={setLocationOn}
-              trackColor={{ true: colors.green, false: colors.track }}
-              thumbColor={colors.white}
-            />
-          </View>
+          {/* 위치 권한은 앱에서 직접 켤 수 없다 — OS 설정으로 보낸다 */}
+          <Pressable
+            accessibilityLabel="location-settings-btn"
+            style={styles.row}
+            onPress={() => Linking.openSettings()}
+          >
+            <View>
+              <Text style={styles.rowLabel}>위치 권한</Text>
+              <Text style={styles.rowHint}>기기 설정에서 변경할 수 있어요</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.sub} />
+          </Pressable>
         </View>
 
         <View style={styles.card}>
           <Pressable
             style={styles.row}
-            onPress={() => Alert.alert('Sitnow', '버전 1.0.0\n자리나우 팀')}
+            onPress={() => Alert.alert('Sitnow', '버전 1.0.0\nDEVNU')}
           >
             <Text style={styles.rowLabel}>앱 정보</Text>
             <Text style={styles.rowValue}>v1.0.0</Text>
@@ -219,6 +250,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.ink,
     fontWeight: '600',
+  },
+  rowHint: {
+    marginTop: 3,
+    fontSize: 12,
+    color: colors.sub,
   },
   rowValue: {
     fontSize: 15,
