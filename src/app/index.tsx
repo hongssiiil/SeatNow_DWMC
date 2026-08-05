@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -36,8 +37,14 @@ export default function LoginScreen() {
     try {
       const result =
         provider === 'kakao' ? await signInWithKakao() : await signInWithApple();
-      // 네이티브 SDK가 없는 환경(Expo Go)에서는 목업 프로필로 로그인
-      login(provider, result ?? undefined);
+      // 네이티브 SDK를 쓸 수 없으면 목업으로 통과시키지 않는다.
+      // (통과시키면 모든 사용자가 mock: 키를 공유해 즐겨찾기·예약이 섞인다)
+      if (!result) {
+        throw new Error(
+          '로그인을 사용할 수 없어요. 앱을 최신 버전으로 다시 설치해 주세요.'
+        );
+      }
+      login(provider, result);
       router.replace('/(tabs)/home');
     } catch (e: any) {
       if (e?.message !== 'CANCELLED') {
@@ -121,21 +128,24 @@ export default function LoginScreen() {
           )}
         </Pressable>
 
-        <Pressable
-          style={[styles.socialBtn, { backgroundColor: colors.apple }]}
-          onPress={() => enterSocial('apple')}
-        >
-          {loading === 'apple' ? (
-            <ActivityIndicator color={colors.white} />
-          ) : (
-            <>
-              <Ionicons name="logo-apple" size={22} color={colors.white} />
-              <Text style={[styles.socialText, { color: colors.white }]}>
-                Apple로 계속하기
-              </Text>
-            </>
-          )}
-        </Pressable>
+        {/* Apple 로그인은 iOS 전용 — 안드로이드에서는 노출하지 않는다 */}
+        {Platform.OS === 'ios' && (
+          <Pressable
+            style={[styles.socialBtn, { backgroundColor: colors.apple }]}
+            onPress={() => enterSocial('apple')}
+          >
+            {loading === 'apple' ? (
+              <ActivityIndicator color={colors.white} />
+            ) : (
+              <>
+                <Ionicons name="logo-apple" size={22} color={colors.white} />
+                <Text style={[styles.socialText, { color: colors.white }]}>
+                  Apple로 계속하기
+                </Text>
+              </>
+            )}
+          </Pressable>
+        )}
 
         <Pressable onPress={enterGuest} hitSlop={8}>
           <Text style={styles.guestLink}>비회원으로 둘러보기 ›</Text>

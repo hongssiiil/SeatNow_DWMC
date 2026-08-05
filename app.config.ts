@@ -11,16 +11,16 @@ const KAKAO_NATIVE_APP_KEY =
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: config.name ?? 'Take In',
+  name: config.name ?? 'Sitnow',
   slug: config.slug ?? 'seatnow-app',
   ios: {
     ...config.ios,
-    bundleIdentifier: 'com.seatnow.takein',
+    bundleIdentifier: 'com.sitnow.app',
     usesAppleSignIn: true,
   },
   android: {
     ...config.android,
-    package: 'com.seatnow.takein',
+    package: 'com.sitnow.app',
   },
   plugins: [
     ...(config.plugins ?? []),

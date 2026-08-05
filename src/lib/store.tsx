@@ -30,7 +30,7 @@ type AppState = {
   live: boolean;
   login: (
     provider: 'kakao' | 'apple',
-    profile?: { id?: string; name: string; email?: string }
+    profile: { id?: string; name: string; email?: string }
   ) => void;
   continueAsGuest: () => void;
   logout: () => void;
@@ -147,14 +147,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     (
       provider: 'kakao' | 'apple',
-      profile?: { id?: string; name: string; email?: string }
+      profile: { id?: string; name: string; email?: string }
     ) => {
-      const key = profile?.id ?? `mock:${provider}`;
+      // id가 없으면 provider별 공유 키로 묶여 데이터가 섞이므로 provider 단독 키를 쓰지 않는다
+      const key = profile.id ?? `${provider}:unknown`;
       setUser({
         key,
-        // profile이 없는 경우는 Expo Go 미리보기뿐 — 목업 이름 사용
-        name: profile?.name ?? '테이크인 회원',
-        email: profile?.email,
+        name: profile.name,
+        email: profile.email,
         provider,
         joinedAt: Date.now() - 12 * DAY,
       });

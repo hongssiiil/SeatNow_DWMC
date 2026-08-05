@@ -1,4 +1,4 @@
-# Take In — 네이티브 연동 설정 가이드
+# Sitnow — 네이티브 연동 설정 가이드
 
 네이버 지도 SDK, 카카오 로그인, Apple 로그인은 **네이티브 모듈**이라 Expo Go에서는 동작하지 않습니다.
 아래 키를 채운 뒤 **development build**로 실행해야 합니다.
@@ -22,8 +22,8 @@
 1. https://console.ncloud.com → **Services → AI·NAVER API → Maps** (신규 콘솔은 Maps 단독 메뉴)
 2. Application 등록 → **Mobile Dynamic Map** 체크
 3. 앱 패키지 등록 (아래 값 그대로):
-   - iOS Bundle ID: `com.seatnow.takein`
-   - Android 패키지명: `com.seatnow.takein`
+   - iOS Bundle ID: `com.sitnow.app`
+   - Android 패키지명: `com.sitnow.app`
 4. 발급된 **Client ID**를 `.env`의 `NAVER_MAP_CLIENT_ID`에 입력
 
 ## 2. 카카오 로그인
@@ -31,8 +31,8 @@
 1. https://developers.kakao.com → 애플리케이션 추가
 2. **앱 키 → 네이티브 앱 키**를 `.env`의 `KAKAO_NATIVE_APP_KEY`에 입력
 3. **플랫폼 등록**:
-   - iOS: 번들 ID `com.seatnow.takein`
-   - Android: 패키지명 `com.seatnow.takein`, 키 해시 등록
+   - iOS: 번들 ID `com.sitnow.app`
+   - Android: 패키지명 `com.sitnow.app`, 키 해시 등록
      (디버그 키 해시 구하기: `keytool -exportcert -alias androiddebugkey -keystore ~/.android/debug.keystore -storepass android | openssl sha1 -binary | openssl base64`)
 4. **제품 설정 → 카카오 로그인 → 활성화 ON**
 5. 동의항목: 닉네임(필수), 이메일(선택) 설정
@@ -41,7 +41,7 @@
 
 1. Apple Developer Program 계정 필요 (유료)
 2. https://developer.apple.com → Certificates, Identifiers & Profiles → Identifiers
-   → `com.seatnow.takein` App ID에 **Sign in with Apple** capability 추가
+   → `com.sitnow.app` App ID에 **Sign in with Apple** capability 추가
 3. Xcode 자동 서명을 쓰면 `npx expo run:ios` 시 자동 처리됨 (팀 선택만 필요)
 4. 코드/키 발급은 따로 필요 없음 (`expo-apple-authentication`이 처리)
 

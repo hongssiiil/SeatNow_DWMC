@@ -87,7 +87,7 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           <Pressable
             style={styles.row}
-            onPress={() => Alert.alert('Take In', '버전 1.0.0\n자리나우 팀')}
+            onPress={() => Alert.alert('Sitnow', '버전 1.0.0\n자리나우 팀')}
           >
             <Text style={styles.rowLabel}>앱 정보</Text>
             <Text style={styles.rowValue}>v1.0.0</Text>
