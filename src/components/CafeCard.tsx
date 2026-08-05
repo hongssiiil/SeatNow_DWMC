@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   closedOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   closedBadge: {
