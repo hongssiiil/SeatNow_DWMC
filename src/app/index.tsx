@@ -22,8 +22,11 @@ export default function LoginScreen() {
   const { login, continueAsGuest, cafes } = useApp();
   const [loading, setLoading] = useState<'kakao' | 'apple' | null>(null);
 
+  // 미리보기 배지가 '자리 있음' 고정이므로, 만석으로 알려진 가게는 hero로 쓰지 않는다.
   const heroCafe: Cafe =
-    cafes.find((c) => c.seatsAvailable > 0 && c.seatsAvailable < c.seatsTotal) ?? cafes[0];
+    cafes.find((c) => c.congestion === 'available') ??
+    cafes.find((c) => c.congestion !== 'full') ??
+    cafes[0];
 
   const enterGuest = () => {
     continueAsGuest();
@@ -57,7 +60,9 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        <Text style={styles.headline}>가기 전에,{'\n'}테이크인 하세요</Text>
+        <Text style={styles.headline}>
+          가기 전에,{'\n'}빈자리 있는지 확인하세요
+        </Text>
         <Text style={styles.subline}>
           실시간 빈자리 정보를{'\n'}헛걸음 없이 확인하세요.
         </Text>
@@ -80,7 +85,8 @@ export default function LoginScreen() {
           <View style={styles.previewCard}>
             <View style={{ flex: 1 }}>
               <View style={styles.previewTitleRow}>
-                <Text style={styles.previewName}>{heroCafe.name}</Text>
+                {/* 온보딩 예시 카드 — 실제 가게 이름 대신 서비스명을 쓴다 */}
+                <Text style={styles.previewName}>Sitnow</Text>
                 <View style={styles.previewBadge}>
                   <Text style={styles.previewBadgeText}>자리 있음</Text>
                 </View>

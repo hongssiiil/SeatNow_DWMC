@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { CafeMap, CafeMapHandle } from '../components/CafeMap';
 import { CafeCard } from '../components/CafeCard';
@@ -22,6 +23,7 @@ import {
   colors,
   radius,
   seatStatus,
+  seatStatusRank,
   statusLabel,
   type SeatStatus,
 } from '../lib/theme';
@@ -145,7 +147,11 @@ export default function HomeScreen() {
     return [...list].sort((a, b) => {
       if (sort === '거리순') return a.walkMin - b.walkMin;
       if (sort === '인기순') return (b.likeCount ?? 0) - (a.likeCount ?? 0);
-      return b.seatsAvailable / b.seatsTotal - a.seatsAvailable / a.seatsTotal;
+      // 자리순: 사장님이 알려준 현황이 기준. seats_available은 관리되지 않아 쓰지 않는다.
+      const rankDiff =
+        seatStatusRank(seatStatus(b.congestion)) -
+        seatStatusRank(seatStatus(a.congestion));
+      return rankDiff !== 0 ? rankDiff : a.walkMin - b.walkMin;
     });
   }, [cafes, sort, bookmarkOnly, bookmarks, seatFilter]);
 
@@ -210,11 +216,14 @@ export default function HomeScreen() {
         style={[styles.searchBar, { top: insets.top + SEARCH_BAR_TOP }]}
         onPress={() => router.push('/search')}
       >
-        <View style={styles.logoPin}>
-          <Ionicons name="cafe" size={16} color={colors.white} />
-        </View>
+        <Image
+          source={require('../../assets/images/sitnow-logo.svg')}
+          style={styles.logo}
+          contentFit="contain"
+          accessibilityLabel="sitnow-logo"
+        />
         <Text style={styles.searchPlaceholder} numberOfLines={1}>
-          테이크인 검색
+          Sitnow 검색
         </Text>
         <View style={{ flex: 1 }} />
         <Pressable
@@ -405,13 +414,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 5,
   },
-  logoPin: {
+  // 원형 배경 없이 로고 이미지만 노출한다
+  logo: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.greenBright,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   searchPlaceholder: {
     fontSize: 16,

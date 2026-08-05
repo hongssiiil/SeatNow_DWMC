@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import { Cafe, INITIAL_CAFES, cafeFromRow } from './data';
 import { fetchNickname, saveNickname as persistNickname } from './profile';
+import { registerPushToken, unregisterPushToken } from './pushToken';
 import { RESERVATION_TIMEOUT_MINUTES } from './seats';
 import { fetchAllVisitCounts } from './social';
 import { CafeRow, supabase } from './supabase';
@@ -109,7 +110,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
           const row = payload.new as CafeRow;
           if (!row?.id) return;
-          console.log(`[supabase] realtime: ${row.name} 좌석 ${row.seats_available}/${row.seats_total}`);
+          console.log(
+            `[supabase] realtime: ${row.name} congestion=${row.congestion ?? 'null'} (좌석 집계 ${row.seats_available}/${row.seats_total})`
+          );
           const mapped = cafeFromRow(row);
           setCafes((prev) => {
             const exists = prev.some((c) => c.id === mapped.id);
@@ -197,6 +200,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setVisitCounts({});
       loadBookmarks(key);
       loadVisitCounts(key);
+      // 찜한 카페의 "자리 있어요" 푸시를 받기 위한 토큰 등록.
+      // user_key가 확정된 뒤여야 favorites와 조인이 맞는다. 실패해도 로그인은 진행.
+      void registerPushToken(key);
       // 저장된 닉네임이 있으면 덮어쓰기
       fetchNickname(key).then((nick) => {
         if (!nick) return;
@@ -214,6 +220,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
+    // 이 기기 토큰을 지우지 않으면 로그아웃 후에도 푸시가 계속 온다
+    void unregisterPushToken();
     setUser(null);
     setIsGuest(false);
     setBookmarks([]);

@@ -27,7 +27,7 @@ import {
   updateReview,
 } from '../lib/social';
 import { useApp } from '../lib/store';
-import { colors, radius } from '../lib/theme';
+import { colors, radius, seatStatus, seatStatusRank } from '../lib/theme';
 
 const PRIMARY = '#1F4D3D';
 
@@ -140,7 +140,11 @@ export default function MyPageScreen() {
     return [...list].sort((a, b) => {
       if (sort === '거리순') return a.walkMin - b.walkMin;
       if (sort === '인기순') return (b.likeCount ?? 0) - (a.likeCount ?? 0);
-      return b.seatsAvailable / b.seatsTotal - a.seatsAvailable / a.seatsTotal;
+      // 자리순: 사장님이 알려준 현황이 기준. seats_available은 관리되지 않아 쓰지 않는다.
+      const rankDiff =
+        seatStatusRank(seatStatus(b.congestion)) -
+        seatStatusRank(seatStatus(a.congestion));
+      return rankDiff !== 0 ? rankDiff : a.walkMin - b.walkMin;
     });
   }, [cafes, bookmarks, sort]);
 
@@ -379,84 +383,6 @@ export default function MyPageScreen() {
           )}
         </View>
 
-        {/* recent-takein-section */}
-        <View accessibilityLabel="recent-takein-section" style={styles.section}>
-          <SectionHeader
-            title="최근 테이크인한 카페"
-            count={takeinCount}
-            expanded={takeinExpanded}
-            onToggle={() => toggleSection('takein')}
-          />
-          {takeinExpanded && (
-            <View
-              accessibilityLabel="section-list"
-              style={[styles.sectionList, styles.takeinList]}
-            >
-              {!user ? (
-                <View style={styles.empty}>
-                  <Ionicons name="cafe-outline" size={36} color={colors.muted} />
-                  <Text style={styles.emptyText}>
-                    로그인하면 테이크인 기록을 볼 수 있어요
-                  </Text>
-                </View>
-              ) : takeInsLoading && takeIns.length === 0 ? (
-                <View style={styles.empty}>
-                  <Text style={styles.emptyText}>불러오는 중…</Text>
-                </View>
-              ) : takeIns.length === 0 ? (
-                <View style={styles.empty}>
-                  <Ionicons name="cafe-outline" size={36} color={colors.muted} />
-                  <Text style={styles.emptyText}>아직 테이크인한 카페가 없어요</Text>
-                </View>
-              ) : (
-                takeIns.map((row) => {
-                  const cafe = cafeById.get(row.cafeId);
-                  if (!cafe) return null;
-                  const hasReview = !!row.myReview;
-                  return (
-                    <Pressable
-                      key={row.cafeId}
-                      accessibilityLabel="recent-takein-item"
-                      style={styles.takeinItem}
-                      onPress={() => router.push(`/cafe/${cafe.id}`)}
-                    >
-                      <View style={styles.takeinBody}>
-                        <Text style={styles.takeinName} numberOfLines={1}>
-                          {cafe.name}
-                        </Text>
-                        <Text style={styles.takeinMeta} numberOfLines={1}>
-                          {cafe.category} · {cafe.region}
-                        </Text>
-                        <Text style={styles.takeinDate}>
-                          최근 방문 {formatVisitedAt(row.lastVisitedAt)}
-                        </Text>
-                      </View>
-                      <Pressable
-                        accessibilityLabel={
-                          hasReview ? 'edit-review-btn' : 'review-btn'
-                        }
-                        style={[
-                          styles.reviewBtn,
-                          hasReview && styles.editReviewBtn,
-                        ]}
-                        onPress={() => openReviewModal(cafe, row.myReview)}
-                      >
-                        <Text
-                          style={[
-                            styles.reviewBtnText,
-                            hasReview && styles.editReviewBtnText,
-                          ]}
-                        >
-                          {hasReview ? '리뷰 수정' : '리뷰 쓰기'}
-                        </Text>
-                      </Pressable>
-                    </Pressable>
-                  );
-                })
-              )}
-            </View>
-          )}
-        </View>
       </ScrollView>
 
       <ReviewModal
