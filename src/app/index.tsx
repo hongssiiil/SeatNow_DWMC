@@ -12,7 +12,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { MockMap, SpeechBubble } from '../components/MockMap';
-import { SeatProgress } from '../components/CafeCard';
 import { useApp } from '../lib/store';
 import { colors, radius } from '../lib/theme';
 import { Cafe } from '../lib/data';
@@ -28,7 +27,7 @@ export default function LoginScreen() {
 
   const enterGuest = () => {
     continueAsGuest();
-    router.replace('/(tabs)/home');
+    router.replace('/home');
   };
 
   const enterSocial = async (provider: 'kakao' | 'apple') => {
@@ -45,7 +44,7 @@ export default function LoginScreen() {
         );
       }
       login(provider, result);
-      router.replace('/(tabs)/home');
+      router.replace('/home');
     } catch (e: any) {
       if (e?.message !== 'CANCELLED') {
         Alert.alert('로그인 실패', e?.message ?? '잠시 후 다시 시도해 주세요.');
@@ -67,7 +66,7 @@ export default function LoginScreen() {
         <View style={styles.heroCard}>
           <MockMap cafes={[]} showLabels>
             <SpeechBubble
-              text="여유 4석"
+              text="자리 있음"
               color={colors.goodText}
               style={{ left: '24%', top: '14%' }}
             />
@@ -83,16 +82,9 @@ export default function LoginScreen() {
               <View style={styles.previewTitleRow}>
                 <Text style={styles.previewName}>{heroCafe.name}</Text>
                 <View style={styles.previewBadge}>
-                  <Text style={styles.previewBadgeText}>여유</Text>
+                  <Text style={styles.previewBadgeText}>자리 있음</Text>
                 </View>
               </View>
-              <View style={styles.previewSeatsRow}>
-                <Text style={styles.previewSeatBig}>{heroCafe.seatsAvailable}</Text>
-                <Text style={styles.previewSeatSmall}>
-                  {' '}/ {heroCafe.seatsTotal}석 남음
-                </Text>
-              </View>
-              <SeatProgress cafe={heroCafe} height={7} />
               <View style={styles.previewMetaRow}>
                 <Ionicons name="location-outline" size={14} color={colors.sub} />
                 <Text style={styles.previewMeta}>도보 {heroCafe.walkMin}분</Text>
@@ -224,20 +216,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: colors.goodText,
-  },
-  previewSeatsRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginVertical: 7,
-  },
-  previewSeatBig: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.ink,
-  },
-  previewSeatSmall: {
-    fontSize: 13,
-    color: colors.text,
   },
   previewMetaRow: {
     flexDirection: 'row',

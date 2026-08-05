@@ -6,7 +6,6 @@ import {
   FlatList,
   PanResponder,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -14,12 +13,18 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { CafeMap } from '../../components/CafeMap';
-import { CafeCard } from '../../components/CafeCard';
-import { FilterChip } from '../../components/FilterChip';
-import { FILTERS, Cafe } from '../../lib/data';
-import { useApp } from '../../lib/store';
-import { colors, radius, seatStatus } from '../../lib/theme';
+import { CafeMap, CafeMapHandle } from '../components/CafeMap';
+import { CafeCard } from '../components/CafeCard';
+import { FilterChip } from '../components/FilterChip';
+import { Cafe } from '../lib/data';
+import { useApp } from '../lib/store';
+import {
+  colors,
+  radius,
+  seatStatus,
+  statusLabel,
+  type SeatStatus,
+} from '../lib/theme';
 
 const SCREEN_H = Dimensions.get('window').height;
 const SHEET_EXPANDED = SCREEN_H * 0.16;
@@ -27,29 +32,68 @@ const SHEET_COLLAPSED = SCREEN_H * 0.45;
 // 지도 조작 시 숨김 상태: 핸들 + 헤더만 보이게
 const SHEET_HIDDEN = SCREEN_H - 150;
 const SNAPS = [SHEET_EXPANDED, SHEET_COLLAPSED, SHEET_HIDDEN];
+/** 현위치 버튼이 시트 위로 뜰 여백 */
+const LOC_BTN_SIZE = 48;
+const LOC_BTN_GAP = 12;
+/** 상단 검색바 — 좌석 필터 칩을 바로 아래에 붙이려면 높이를 알아야 한다 */
+const SEARCH_BAR_H = 54;
+const SEARCH_BAR_TOP = 8;
+const CHIP_ROW_GAP = 10;
 
-type SortKey = '거리순' | '여유순';
+type SortKey = '거리순' | '여유순' | '인기순';
+
+/** 검색바 아래 좌석 필터 — 한 번에 하나만 선택 (다시 누르면 해제) */
+type SeatFilter = SeatStatus | 'all';
+
+// 라벨은 statusLabel을 그대로 써 카드·마커의 좌석 표기와 어긋나지 않게 한다
+const SEAT_FILTER_CHIPS: {
+  key: SeatStatus;
+  label: string;
+  icon: string;
+  accent: string;
+}[] = [
+  {
+    key: 'available',
+    label: statusLabel('available'),
+    icon: 'checkmark-circle',
+    accent: colors.goodText,
+  },
+  {
+    key: 'full',
+    label: statusLabel('full'),
+    icon: 'close-circle',
+    accent: colors.badText,
+  },
+];
+
+function matchesSeatFilter(cafe: Cafe, filter: SeatFilter): boolean {
+  return filter === 'all' || seatStatus(cafe.congestion) === filter;
+}
 
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { cafes, now, bookmarks, toggleBookmark, user } = useApp();
+  const { cafes, now, bookmarks, toggleBookmark, user, visitCounts } = useApp();
+  const mapRef = useRef<CafeMapHandle>(null);
 
-  const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  const [seatFilter, setSeatFilter] = useState<SeatFilter>('all');
   const [sort, setSort] = useState<SortKey>('거리순');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [bookmarkOnly, setBookmarkOnly] = useState(false);
+  const [locBusy, setLocBusy] = useState(false);
 
   // 바텀시트 드래그
   const sheetY = useRef(new Animated.Value(SHEET_COLLAPSED)).current;
+  /** 시트의 논리적 현재 위치. Animated 리스너 대신 직접 갱신한다. */
   const sheetPos = useRef(SHEET_COLLAPSED);
-  sheetY.addListener(({ value }) => {
-    sheetPos.current = value;
-  });
+  /** 이번 제스처가 시작된 위치. g.dy 가 누적값이라 기준점이 고정돼야 한다. */
+  const dragStart = useRef(SHEET_COLLAPSED);
+
   const snapTo = (target: number) => {
+    sheetPos.current = target;
     Animated.spring(sheetY, {
       toValue: target,
-      useNativeDriver: false,
+      useNativeDriver: true,
       bounciness: 4,
     }).start();
   };
@@ -58,11 +102,15 @@ export default function HomeScreen() {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 4,
+      onPanResponderGrant: () => {
+        dragStart.current = sheetPos.current;
+      },
       onPanResponderMove: (_, g) => {
         const next = Math.min(
           SHEET_HIDDEN,
-          Math.max(SHEET_EXPANDED, sheetPos.current + g.dy)
+          Math.max(SHEET_EXPANDED, dragStart.current + g.dy)
         );
+        sheetPos.current = next;
         sheetY.setValue(next);
       },
       onPanResponderRelease: (_, g) => {
@@ -93,26 +141,23 @@ export default function HomeScreen() {
   const nearbyCafes = useMemo(() => {
     let list = cafes.filter((c) => c.nearby);
     if (bookmarkOnly) list = cafes.filter((c) => bookmarks.includes(c.id));
-    if (activeFilters.length > 0) {
-      list = list.filter((c) =>
-        activeFilters.every((f) =>
-          f === '여유'
-            ? seatStatus(c.seatsAvailable, c.seatsTotal) === 'good'
-            : c.tags.includes(f)
-        )
-      );
-    }
-    return [...list].sort((a, b) =>
-      sort === '거리순'
-        ? a.walkMin - b.walkMin
-        : b.seatsAvailable / b.seatsTotal - a.seatsAvailable / a.seatsTotal
-    );
-  }, [cafes, activeFilters, sort, bookmarkOnly, bookmarks]);
+    list = list.filter((c) => matchesSeatFilter(c, seatFilter));
+    return [...list].sort((a, b) => {
+      if (sort === '거리순') return a.walkMin - b.walkMin;
+      if (sort === '인기순') return (b.likeCount ?? 0) - (a.likeCount ?? 0);
+      return b.seatsAvailable / b.seatsTotal - a.seatsAvailable / a.seatsTotal;
+    });
+  }, [cafes, sort, bookmarkOnly, bookmarks, seatFilter]);
 
-  const toggleFilter = (key: string) =>
-    setActiveFilters((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
+  // 지도 마커는 주변 여부와 무관하게 전체 카페 대상 — 좌석 필터만 적용
+  const mapCafes = useMemo(
+    () => cafes.filter((c) => matchesSeatFilter(c, seatFilter)),
+    [cafes, seatFilter]
+  );
+
+  /** 같은 칩을 다시 누르면 해제, 다른 칩을 누르면 그쪽으로 교체 */
+  const toggleSeatFilter = (key: SeatStatus) =>
+    setSeatFilter((prev) => (prev === key ? 'all' : key));
 
   const onToggleBookmark = (cafe: Cafe) => {
     if (!toggleBookmark(cafe.id)) {
@@ -123,19 +168,47 @@ export default function HomeScreen() {
     }
   };
 
+  const onPressMyLocation = async () => {
+    if (locBusy) return;
+    setLocBusy(true);
+    const ok = await mapRef.current?.moveToMyLocation();
+    setLocBusy(false);
+    if (!ok) {
+      Alert.alert(
+        '위치를 확인할 수 없어요',
+        '설정에서 위치 권한을 허용한 뒤 다시 시도해 주세요.'
+      );
+    }
+  };
+
+  /**
+   * top 은 레이아웃 속성이라 네이티브 드라이버를 못 쓴다 — 드래그 매 프레임마다
+   * JS 브리지를 타고 시트/리스트 레이아웃이 다시 계산돼 버벅인다.
+   * 위치를 고정하고 translateY 로만 움직여 애니메이션을 네이티브로 넘긴다.
+   */
+  const sheetTranslateY = Animated.subtract(sheetY, SHEET_EXPANDED);
+  // 현위치 버튼: 바텀시트 상단보다 LOC_BTN_GAP + SIZE 만큼 위
+  const locationBtnTranslateY = Animated.subtract(
+    sheetY,
+    LOC_BTN_SIZE + LOC_BTN_GAP
+  );
+
   return (
     <View style={styles.container}>
       {/* 지도 (dev build: 네이버 지도 / Expo Go: 목업) */}
       <CafeMap
-        cafes={cafes}
+        ref={mapRef}
+        cafes={mapCafes}
+        bookmarkedIds={bookmarks}
         onPressMarker={(cafe) => router.push(`/cafe/${cafe.id}`)}
         onMapInteract={hideSheet}
+        bottomControlsInset={SCREEN_H - SHEET_HIDDEN + LOC_BTN_SIZE + LOC_BTN_GAP}
       />
 
       {/* 상단 검색바 — 네이버지도 스타일 원바 (로고 아이콘 + 검색) */}
       <Pressable
-        style={[styles.searchBar, { top: insets.top + 8 }]}
-        onPress={() => router.push('/(tabs)/search')}
+        style={[styles.searchBar, { top: insets.top + SEARCH_BAR_TOP }]}
+        onPress={() => router.push('/search')}
       >
         <View style={styles.logoPin}>
           <Ionicons name="cafe" size={16} color={colors.white} />
@@ -160,10 +233,69 @@ export default function HomeScreen() {
             color={colors.ink}
           />
         </Pressable>
+
+        {/* 마이페이지 진입 — 탭바를 없앤 대신 검색바 우측 프로필로 들어간다 */}
+        <Pressable
+          accessibilityLabel="mypage-btn"
+          hitSlop={10}
+          style={styles.profileBtn}
+          onPress={() => router.push('/mypage')}
+        >
+          {user ? (
+            <View style={styles.profileAvatar}>
+              <Text style={styles.profileAvatarText}>{user.name.slice(0, 2)}</Text>
+            </View>
+          ) : (
+            <View style={[styles.profileAvatar, styles.profileAvatarGuest]}>
+              <Ionicons name="person" size={15} color={colors.white} />
+            </View>
+          )}
+        </Pressable>
       </Pressable>
 
+      {/* 좌석 필터 칩 — 네이버지도처럼 검색바 바로 아래, 지도 위에 띄움 */}
+      <View
+        style={[
+          styles.seatFilterRow,
+          { top: insets.top + SEARCH_BAR_TOP + SEARCH_BAR_H + CHIP_ROW_GAP },
+        ]}
+      >
+        {SEAT_FILTER_CHIPS.map((chip) => (
+          <FilterChip
+            key={chip.key}
+            accessibilityLabel={`seat-filter-${chip.key}`}
+            label={chip.label}
+            icon={chip.icon}
+            iconSet="ion"
+            accent={chip.accent}
+            active={seatFilter === chip.key}
+            onPress={() => toggleSeatFilter(chip.key)}
+            style={styles.seatFilterChip}
+          />
+        ))}
+      </View>
+
+      {/* 현위치 버튼 — 시트와 겹치지 않게 시트 바로 위 */}
+      <Animated.View
+        pointerEvents="box-none"
+        style={[
+          styles.locationBtnWrap,
+          { transform: [{ translateY: locationBtnTranslateY }] },
+        ]}
+      >
+        <Pressable
+          accessibilityLabel="my-location-btn"
+          style={[styles.locationBtn, locBusy && { opacity: 0.6 }]}
+          onPress={onPressMyLocation}
+        >
+          <Ionicons name="locate" size={22} color={colors.ink} />
+        </Pressable>
+      </Animated.View>
+
       {/* 바텀시트 */}
-      <Animated.View style={[styles.sheet, { top: sheetY }]}>
+      <Animated.View
+        style={[styles.sheet, { transform: [{ translateY: sheetTranslateY }] }]}
+      >
         <View {...panResponder.panHandlers}>
           <View style={styles.handleWrap}>
             <View style={styles.handle} />
@@ -189,7 +321,7 @@ export default function HomeScreen() {
 
         {sortMenuOpen && (
           <View style={styles.sortMenu}>
-            {(['거리순', '여유순'] as SortKey[]).map((k) => (
+            {(['거리순', '여유순', '인기순'] as SortKey[]).map((k) => (
               <Pressable
                 key={k}
                 style={styles.sortItem}
@@ -214,23 +346,7 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* 필터 칩 */}
-        <View style={styles.chipsWrap}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsRow}
-          >
-            {FILTERS.slice(0, 6).map((f) => (
-              <FilterChip
-                key={f.key}
-                label={f.label}
-                active={activeFilters.includes(f.key)}
-                onPress={() => toggleFilter(f.key)}
-              />
-            ))}
-          </ScrollView>
-        </View>
+        <View style={styles.listDivider} />
 
         {/* 카페 리스트 */}
         <FlatList
@@ -241,7 +357,13 @@ export default function HomeScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Ionicons name="cafe-outline" size={36} color={colors.muted} />
-              <Text style={styles.emptyText}>조건에 맞는 카페가 없어요</Text>
+              <Text style={styles.emptyText}>
+                {bookmarkOnly
+                  ? '저장한 카페가 없어요'
+                  : seatFilter !== 'all'
+                    ? '조건에 맞는 카페가 없어요'
+                    : '주변에 카페가 없어요'}
+              </Text>
             </View>
           }
           renderItem={({ item }) => (
@@ -249,6 +371,7 @@ export default function HomeScreen() {
               cafe={item}
               now={now}
               bookmarked={bookmarks.includes(item.id)}
+              visitCount={visitCounts[item.id] ?? 0}
               onPress={() => router.push(`/cafe/${item.id}`)}
               onToggleBookmark={() => onToggleBookmark(item)}
             />
@@ -268,14 +391,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    height: 54,
+    height: SEARCH_BAR_H,
     backgroundColor: colors.white,
     borderRadius: radius.pill,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 11,
     paddingLeft: 10,
-    paddingRight: 18,
+    paddingRight: 10,
     shadowColor: '#000',
     shadowOpacity: 0.1,
     shadowRadius: 12,
@@ -295,10 +418,70 @@ const styles = StyleSheet.create({
     color: colors.muted,
     flexShrink: 1,
   },
+  seatFilterRow: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    gap: 8,
+    zIndex: 5,
+    // 칩 사이 빈 공간으로 지도 제스처가 통과하도록 (prop 형태는 deprecated)
+    pointerEvents: 'box-none',
+  },
+  seatFilterChip: {
+    // 지도 위에 떠 있으므로 검색바와 같은 그림자를 준다
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  profileBtn: {
+    marginLeft: 2,
+  },
+  profileAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.green,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarGuest: {
+    backgroundColor: colors.sage,
+  },
+  profileAvatarText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  locationBtnWrap: {
+    position: 'absolute',
+    top: 0,
+    right: 16,
+    zIndex: 5,
+  },
+  locationBtn: {
+    width: LOC_BTN_SIZE,
+    height: LOC_BTN_SIZE,
+    borderRadius: LOC_BTN_SIZE / 2,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   sheet: {
     position: 'absolute',
     left: 0,
     right: 0,
+    // top+bottom 을 고정해 높이를 상수로 만든다. 이동은 translateY 가 담당.
+    top: SHEET_EXPANDED,
     bottom: 0,
     backgroundColor: colors.bg,
     borderTopLeftRadius: 28,
@@ -369,16 +552,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.ink,
   },
-  chipsWrap: {
+  // 필터 칩을 없앤 뒤 헤더와 리스트를 가르던 경계선을 대체
+  listDivider: {
     borderTopWidth: 1,
-    borderBottomWidth: 1,
     borderColor: colors.divider,
     marginBottom: 12,
-  },
-  chipsRow: {
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
   },
   empty: {
     alignItems: 'center',

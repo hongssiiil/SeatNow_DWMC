@@ -2,20 +2,23 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Cafe } from '../lib/data';
-import { colors } from '../lib/theme';
+import { colors, seatStatus } from '../lib/theme';
 
 /** 네이버 지도 느낌의 연녹색 목업 지도 (Expo Go 호환) */
 export function MockMap({
   cafes,
+  bookmarkedIds = [],
   onPressMarker,
   showLabels = true,
   children,
 }: {
   cafes: Cafe[];
+  bookmarkedIds?: string[];
   onPressMarker?: (cafe: Cafe) => void;
   showLabels?: boolean;
   children?: React.ReactNode;
 }) {
+  const savedSet = new Set(bookmarkedIds);
   return (
     <View style={styles.map}>
       {/* 블록(건물 단지) */}
@@ -66,16 +69,23 @@ export function MockMap({
         <View style={styles.meHalo} />
         <View style={styles.meDot} />
       </View>
-      {/* 카페 마커 */}
+      {/* 카페 마커 — 저장한 곳은 빨강 */}
       {cafes.map((cafe) => {
-        const full = cafe.seatsAvailable <= 0;
+        const full = seatStatus(cafe.congestion) === 'full';
+        const saved = savedSet.has(cafe.id);
         return (
           <Pressable
             key={cafe.id}
             style={[styles.markerWrap, { left: `${cafe.mapX}%`, top: `${cafe.mapY}%` }]}
             onPress={() => onPressMarker?.(cafe)}
           >
-            <View style={[styles.marker, full && { backgroundColor: colors.markerFull }]}>
+            <View
+              style={[
+                styles.marker,
+                full && !saved && { backgroundColor: colors.markerFull },
+                saved && styles.markerSaved,
+              ]}
+            >
               <Ionicons name="cafe" size={15} color={colors.white} />
             </View>
             {showLabels && <Text style={styles.markerLabel}>{cafe.name}</Text>}
@@ -199,6 +209,8 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 12,
     backgroundColor: colors.marker,
+    borderWidth: 1.5,
+    borderColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
@@ -206,6 +218,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 3,
+  },
+  markerSaved: {
+    backgroundColor: '#EB5757',
   },
   markerLabel: {
     marginTop: 3,

@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "Sitnow",
+    "owner": "dwnc-cafe",
     "slug": "seatnow-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,7 +9,12 @@
     "scheme": "seatnowapp",
     "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.seatnow.takein",
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {

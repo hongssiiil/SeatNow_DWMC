@@ -1,5 +1,6 @@
 import 'react-native-url-polyfill/auto';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import type { Congestion } from './theme';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -36,4 +37,7 @@ export type CafeRow = {
   hours_weekday: string;
   hours_weekend: string;
   last_updated: string;
+  like_count?: number;
+  /** 좌석 현황 판정 기준 — 'full'이면 만석, 비어 있으면 자리 있음 */
+  congestion?: Congestion;
 };

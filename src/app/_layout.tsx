@@ -22,7 +22,11 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" />
-          <Stack.Screen name="(tabs)" />
+          {/* 하단 탭바 제거 — 홈/마이페이지는 스택 스크린이고,
+              마이페이지는 홈 검색바의 프로필 버튼으로 진입한다 */}
+          <Stack.Screen name="home" />
+          <Stack.Screen name="mypage" />
+          <Stack.Screen name="search" />
           <Stack.Screen name="cafe/[id]" />
           <Stack.Screen name="settings" />
         </Stack>

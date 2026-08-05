@@ -1,4 +1,6 @@
 import rawCafes from './cafes.json';
+import { TAG_POOL } from '../constants/amenities';
+import type { Congestion } from './theme';
 
 export type Cafe = {
   id: string;
@@ -19,23 +21,24 @@ export type Cafe = {
   hoursWeekend: string;
   noise: '조용함' | '보통' | '활기참';
   nearby: boolean; // 주변 카페 리스트 노출 여부
+  likeCount: number;
+  /** 좌석 현황 판정의 기준 (seatStatus). DB 미연결 시에는 항상 null */
+  congestion: Congestion;
+  /**
+   * 영업 여부 (목업/API 매핑).
+   * - true/false: 명시 상태
+   * - null: 정보 없음 → CLOSED UI 미표시
+   * - undefined: hoursWeekday/Weekend·businessHours로 계산
+   */
+  isOpen?: boolean | null;
+  /** 0=Sun…6=Sat, null=그날 휴무 (API 연동 시) */
+  businessHours?: (string | null)[] | null;
+  /** 정기휴무 요일 */
+  regularHoliday?: number[] | null;
   // 목업 지도용 위치 (% 좌표, Expo Go 폴백)
   mapX: number;
   mapY: number;
 };
-
-export const FILTERS: { key: string; label: string; icon: string; iconSet: 'ion' | 'mci' }[] = [
-  { key: '여유', label: '여유', icon: 'ellipse', iconSet: 'ion' },
-  { key: '콘센트', label: '콘센트', icon: 'power-plug-outline', iconSet: 'mci' },
-  { key: '1인석', label: '1인석', icon: 'person-outline', iconSet: 'ion' },
-  { key: '소파석', label: '소파석', icon: 'sofa-outline', iconSet: 'mci' },
-  { key: '4인석', label: '4인석', icon: 'people-outline', iconSet: 'ion' },
-  { key: '내부 화장실', label: '내부 화장실', icon: 'human-male-female', iconSet: 'mci' },
-  { key: '조용한', label: '조용한', icon: 'moon-outline', iconSet: 'ion' },
-  { key: '주차 가능', label: '주차 가능', icon: 'parking', iconSet: 'mci' },
-  { key: '시간제한 없음', label: '시간제한 없음', icon: 'time-outline', iconSet: 'ion' },
-  { key: '노트북 작업', label: '노트북 작업', icon: 'laptop-outline', iconSet: 'ion' },
-];
 
 // 기준점: 서울대입구역 2호선
 export const MAP_CENTER = { lat: 37.481247, lng: 126.952739 };
@@ -70,18 +73,6 @@ function seedFrom(placeId: string): number {
   return h;
 }
 
-const TAG_POOL = [
-  '콘센트',
-  '1인석',
-  '소파석',
-  '4인석',
-  '내부 화장실',
-  '조용한',
-  '주차 가능',
-  '시간제한 없음',
-  '노트북 작업',
-];
-
 const HOURS = [
   { wd: '09:00 - 22:00', we: '10:00 - 22:00' },
   { wd: '08:30 - 21:00', we: '10:00 - 21:00' },
@@ -108,6 +99,9 @@ export const INITIAL_CAFES: Cafe[] = (rawCafes as any[]).map((raw) => {
   const tags = TAG_POOL.filter((_, i) => (seed >>> (i + 4)) & 1);
   if (tags.length === 0) tags.push('노트북 작업');
   const hours = HOURS[seed % HOURS.length];
+  // 목업: ~1/7 휴무, ~1/17 정보없음, 나머지 영업중(명시)
+  const isOpen: boolean | null =
+    seed % 17 === 0 ? null : seed % 7 === 0 ? false : true;
 
   return {
     id: raw.id,
@@ -128,6 +122,10 @@ export const INITIAL_CAFES: Cafe[] = (rawCafes as any[]).map((raw) => {
     hoursWeekend: hours.we,
     noise: NOISE[seed % 3],
     nearby: walkMin <= 10,
+    likeCount: (seed >>> 5) % 24,
+    // 목업에는 혼잡도 정보가 없다 → 전부 자리 있음으로 읽힌다
+    congestion: null,
+    isOpen,
     mapX: ((raw.lng - LNG_MIN) / (LNG_MAX - LNG_MIN)) * 100,
     mapY: (1 - (raw.lat - LAT_MIN) / (LAT_MAX - LAT_MIN)) * 100,
   };
@@ -151,6 +149,8 @@ export function cafeFromRow(row: {
   hours_weekday: string;
   hours_weekend: string;
   last_updated: string;
+  like_count?: number;
+  congestion?: Congestion;
 }): Cafe {
   const distM = haversineM(MAP_CENTER.lat, MAP_CENTER.lng, row.lat, row.lng);
   const walkMin = Math.max(1, Math.round(distM / WALK_M_PER_MIN));
@@ -173,6 +173,10 @@ export function cafeFromRow(row: {
     hoursWeekend: row.hours_weekend,
     noise: row.noise,
     nearby: walkMin <= 10,
+    likeCount: row.like_count ?? 0,
+    congestion: row.congestion ?? null,
+    // 네이버 Place API 연동 전: 평일/주말 문자열로 유틸 계산 (isOpen undefined)
+    isOpen: undefined,
     mapX: ((row.lng - LNG_MIN) / (LNG_MAX - LNG_MIN)) * 100,
     mapY: (1 - (row.lat - LAT_MIN) / (LAT_MAX - LAT_MIN)) * 100,
   };
