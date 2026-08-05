@@ -16,7 +16,7 @@ export function StatusBadge({ cafe }: { cafe: Cafe }) {
       </View>
     );
   }
-  const s = seatStatus(cafe.seatsAvailable);
+  const s = seatStatus(cafe.congestion);
   const c = statusColors(s);
   return (
     <View style={[styles.badge, { backgroundColor: c.bg }]}>

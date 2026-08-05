@@ -67,7 +67,7 @@ const SEAT_FILTER_CHIPS: {
 ];
 
 function matchesSeatFilter(cafe: Cafe, filter: SeatFilter): boolean {
-  return filter === 'all' || seatStatus(cafe.seatsAvailable) === filter;
+  return filter === 'all' || seatStatus(cafe.congestion) === filter;
 }
 
 export default function HomeScreen() {

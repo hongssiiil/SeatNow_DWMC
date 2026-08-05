@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Cafe } from '../lib/data';
-import { colors } from '../lib/theme';
+import { colors, seatStatus } from '../lib/theme';
 
 /** 네이버 지도 느낌의 연녹색 목업 지도 (Expo Go 호환) */
 export function MockMap({
@@ -71,7 +71,7 @@ export function MockMap({
       </View>
       {/* 카페 마커 — 저장한 곳은 빨강 */}
       {cafes.map((cafe) => {
-        const full = cafe.seatsAvailable <= 0;
+        const full = seatStatus(cafe.congestion) === 'full';
         const saved = savedSet.has(cafe.id);
         return (
           <Pressable

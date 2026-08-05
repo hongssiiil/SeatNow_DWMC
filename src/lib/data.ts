@@ -1,5 +1,6 @@
 import rawCafes from './cafes.json';
 import { TAG_POOL } from '../constants/amenities';
+import type { Congestion } from './theme';
 
 export type Cafe = {
   id: string;
@@ -21,6 +22,8 @@ export type Cafe = {
   noise: '조용함' | '보통' | '활기참';
   nearby: boolean; // 주변 카페 리스트 노출 여부
   likeCount: number;
+  /** 좌석 현황 판정의 기준 (seatStatus). DB 미연결 시에는 항상 null */
+  congestion: Congestion;
   /**
    * 영업 여부 (목업/API 매핑).
    * - true/false: 명시 상태
@@ -120,6 +123,8 @@ export const INITIAL_CAFES: Cafe[] = (rawCafes as any[]).map((raw) => {
     noise: NOISE[seed % 3],
     nearby: walkMin <= 10,
     likeCount: (seed >>> 5) % 24,
+    // 목업에는 혼잡도 정보가 없다 → 전부 자리 있음으로 읽힌다
+    congestion: null,
     isOpen,
     mapX: ((raw.lng - LNG_MIN) / (LNG_MAX - LNG_MIN)) * 100,
     mapY: (1 - (raw.lat - LAT_MIN) / (LAT_MAX - LAT_MIN)) * 100,
@@ -145,6 +150,7 @@ export function cafeFromRow(row: {
   hours_weekend: string;
   last_updated: string;
   like_count?: number;
+  congestion?: Congestion;
 }): Cafe {
   const distM = haversineM(MAP_CENTER.lat, MAP_CENTER.lng, row.lat, row.lng);
   const walkMin = Math.max(1, Math.round(distM / WALK_M_PER_MIN));
@@ -168,6 +174,7 @@ export function cafeFromRow(row: {
     noise: row.noise,
     nearby: walkMin <= 10,
     likeCount: row.like_count ?? 0,
+    congestion: row.congestion ?? null,
     // 네이버 Place API 연동 전: 평일/주말 문자열로 유틸 계산 (isOpen undefined)
     isOpen: undefined,
     mapX: ((row.lng - LNG_MIN) / (LNG_MAX - LNG_MIN)) * 100,

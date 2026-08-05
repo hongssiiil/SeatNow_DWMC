@@ -155,15 +155,17 @@ export default function CafeDetailScreen() {
     );
   };
 
+  /** 표시용 좌석 현황 — 이 버전에서는 congestion 컬럼이 정답이다. */
+  const currentSeatStatus = seatStatus(cafe.congestion);
+  const seatStatusColors = statusColors(currentSeatStatus);
+
   /**
-   * 자리 있음 / 만석 판단의 단일 기준.
-   * 좌석 단위 라이브 데이터가 있으면 그걸 우선하고, 없으면 카페 집계값으로 폴백한다.
-   * 상태 뱃지와 CTA가 이 값을 함께 쓰므로 둘이 어긋날 수 없다.
+   * 테이크인 가능 여부는 좌석 단위 실데이터로 따로 판단한다.
+   * congestion이 비어 있어도 실제로 빈 좌석이 없으면 예약이 성립하지 않으므로,
+   * 표시(congestion)와 CTA(좌석 행)의 기준이 어긋날 수 있음을 감수한다.
    */
   const hasFreeSeat =
     seats.some((s) => s.status === 'available') || cafe.seatsAvailable > 0;
-  const currentSeatStatus = seatStatus(hasFreeSeat ? 1 : 0);
-  const seatStatusColors = statusColors(currentSeatStatus);
 
   const onReserve = () => {
     if (isCafeClosed(cafe)) {

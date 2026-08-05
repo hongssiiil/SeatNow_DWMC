@@ -161,7 +161,7 @@ export const TAG_POOL = AMENITIES.filter(
 
 export function cafeHasAmenity(cafe: Cafe, amenity: Amenity): boolean {
   if (amenity.category === 'congestion-filter') {
-    return seatStatus(cafe.seatsAvailable) === amenity.match;
+    return seatStatus(cafe.congestion) === amenity.match;
   }
   if (amenity.category === 'noise-level') {
     if (cafe.noise === amenity.match) return true;

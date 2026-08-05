@@ -8,7 +8,7 @@ import React, {
 } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Cafe, INITIAL_CAMERA } from '../lib/data';
-import { colors } from '../lib/theme';
+import { colors, seatStatus } from '../lib/theme';
 import { MockMap } from './MockMap';
 
 // 지도 마커 (#3A8A63 여유 / 회색 만석 / 빨강 저장) — 얇은 흰 테두리
@@ -150,7 +150,7 @@ export const CafeMap = forwardRef<
     >
       {cafes.map((cafe) => {
         const saved = savedSet.has(cafe.id);
-        const full = cafe.seatsAvailable <= 0;
+        const full = seatStatus(cafe.congestion) === 'full';
         const image = saved ? MARKER_SAVED : full ? MARKER_FULL : MARKER_AVAILABLE;
         return (
           <NaverMapMarkerOverlay
