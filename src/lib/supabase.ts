@@ -28,8 +28,6 @@ export type CafeRow = {
   region: string;
   lat: number;
   lng: number;
-  place_id: string;
-  naver_map_url: string;
   seats_total: number;
   seats_available: number;
   tags: string[];

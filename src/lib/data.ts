@@ -15,8 +15,6 @@ export type Cafe = {
   region: string;
   lat: number;
   lng: number;
-  placeId: string;
-  naverMapUrl: string;
   hoursWeekday: string;
   hoursWeekend: string;
   noise: '조용함' | '보통' | '활기참';
@@ -64,11 +62,11 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-// placeId 기반 결정적 시드 (실제 좌석 데이터 연동 전 목업)
-function seedFrom(placeId: string): number {
+// 우리 id 기반 결정적 시드 (실제 좌석 데이터 연동 전 목업)
+function seedFrom(key: string): number {
   let h = 0;
-  for (let i = 0; i < placeId.length; i++) {
-    h = (h * 31 + placeId.charCodeAt(i)) >>> 0;
+  for (let i = 0; i < key.length; i++) {
+    h = (h * 31 + key.charCodeAt(i)) >>> 0;
   }
   return h;
 }
@@ -91,7 +89,7 @@ const LNG_MAX = 126.97;
 const now = Date.now();
 
 export const INITIAL_CAFES: Cafe[] = (rawCafes as any[]).map((raw) => {
-  const seed = seedFrom(String(raw.placeId));
+  const seed = seedFrom(String(raw.id));
   const seatsTotal = 8 + (seed % 13); // 8~20석
   const seatsAvailable = (seed >>> 3) % (seatsTotal + 1);
   const distM = haversineM(MAP_CENTER.lat, MAP_CENTER.lng, raw.lat, raw.lng);
@@ -116,8 +114,6 @@ export const INITIAL_CAFES: Cafe[] = (rawCafes as any[]).map((raw) => {
     region: raw.region,
     lat: raw.lat,
     lng: raw.lng,
-    placeId: String(raw.placeId),
-    naverMapUrl: raw.naverMapUrl,
     hoursWeekday: hours.wd,
     hoursWeekend: hours.we,
     noise: NOISE[seed % 3],
@@ -145,8 +141,6 @@ export function cafeFromRow(row: {
   region: string;
   lat: number;
   lng: number;
-  place_id: string;
-  naver_map_url: string;
   seats_total: number;
   seats_available: number;
   tags: string[];
@@ -173,15 +167,13 @@ export function cafeFromRow(row: {
     region: row.region,
     lat: row.lat,
     lng: row.lng,
-    placeId: row.place_id,
-    naverMapUrl: row.naver_map_url,
     hoursWeekday: row.hours_weekday,
     hoursWeekend: row.hours_weekend,
     noise: row.noise,
     nearby: walkMin <= 10,
     likeCount: row.like_count ?? 0,
     congestion: normalizeCongestion(row.congestion),
-    // 네이버 Place API 연동 전: 평일/주말 문자열로 유틸 계산 (isOpen undefined)
+    // 영업시간 API 연동 전: 평일/주말 문자열로 유틸 계산 (isOpen undefined)
     isOpen: undefined,
     mapX: ((row.lng - LNG_MIN) / (LNG_MAX - LNG_MIN)) * 100,
     mapY: (1 - (row.lat - LAT_MIN) / (LAT_MAX - LAT_MIN)) * 100,

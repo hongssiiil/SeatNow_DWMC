@@ -3,6 +3,7 @@ import {
   Alert,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -144,10 +145,17 @@ export default function CafeDetailScreen() {
     }
   };
 
+  /**
+   * 길찾기는 좌표로 OS 기본 지도를 연다.
+   * 특정 지도 서비스의 내부 식별자(place id)에 의존하지 않기 위해서다.
+   */
   const onDirections = () => {
-    Linking.openURL(cafe.naverMapUrl).catch(() =>
-      Alert.alert('길찾기를 열 수 없어요')
-    );
+    const label = encodeURIComponent(cafe.name);
+    const url =
+      Platform.OS === 'ios'
+        ? `https://maps.apple.com/?daddr=${cafe.lat},${cafe.lng}&q=${label}`
+        : `geo:${cafe.lat},${cafe.lng}?q=${cafe.lat},${cafe.lng}(${label})`;
+    Linking.openURL(url).catch(() => Alert.alert('길찾기를 열 수 없어요'));
   };
 
   /** 표시용 좌석 현황 — 이 버전에서는 congestion 컬럼이 정답이다. */
