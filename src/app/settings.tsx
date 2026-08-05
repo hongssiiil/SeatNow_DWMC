@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { deleteAccount } from '../lib/account';
 import { useApp } from '../lib/store';
 import { colors, radius } from '../lib/theme';
 
@@ -19,6 +20,7 @@ export default function SettingsScreen() {
   const { user, logout } = useApp();
   const [notifOn, setNotifOn] = useState(true);
   const [locationOn, setLocationOn] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   const onLogout = () => {
     Alert.alert('로그아웃', '정말 로그아웃할까요?', [
@@ -33,6 +35,51 @@ export default function SettingsScreen() {
         },
       },
     ]);
+  };
+
+  const runDeleteAccount = async () => {
+    if (!user || deleting) return;
+    setDeleting(true);
+    const result = await deleteAccount(user.key, user.provider);
+    setDeleting(false);
+
+    if (!result.ok) {
+      // 부분 실패를 성공으로 위장하지 않는다 — 남은 데이터가 있으면 알린다
+      Alert.alert(
+        '일부 데이터를 지우지 못했어요',
+        '네트워크 상태를 확인한 뒤 다시 시도해 주세요. 계속 실패하면 문의해 주세요.'
+      );
+      return;
+    }
+
+    logout();
+    router.dismissAll();
+    router.replace('/');
+    Alert.alert('계정이 삭제됐어요', '이용해 주셔서 감사합니다.');
+  };
+
+  /** 되돌릴 수 없는 작업이므로 2단계로 확인한다 */
+  const onDeleteAccount = () => {
+    Alert.alert(
+      '계정 삭제',
+      '저장한 카페, 테이크인 기록, 리뷰가 모두 삭제되며 되돌릴 수 없어요.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '계속',
+          style: 'destructive',
+          onPress: () =>
+            Alert.alert('정말 삭제할까요?', '이 작업은 취소할 수 없어요.', [
+              { text: '아니요', style: 'cancel' },
+              {
+                text: '삭제',
+                style: 'destructive',
+                onPress: runDeleteAccount,
+              },
+            ]),
+        },
+      ]
+    );
   };
 
   return (
@@ -92,12 +139,34 @@ export default function SettingsScreen() {
             <Text style={styles.rowLabel}>앱 정보</Text>
             <Text style={styles.rowValue}>v1.0.0</Text>
           </Pressable>
+          <View style={styles.divider} />
+          <Pressable
+            accessibilityLabel="privacy-policy-btn"
+            style={styles.row}
+            onPress={() => router.push('/privacy')}
+          >
+            <Text style={styles.rowLabel}>개인정보처리방침</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.sub} />
+          </Pressable>
         </View>
 
         {user ? (
-          <Pressable style={styles.logoutBtn} onPress={onLogout}>
-            <Text style={styles.logoutText}>로그아웃</Text>
-          </Pressable>
+          <>
+            <Pressable style={styles.logoutBtn} onPress={onLogout}>
+              <Text style={styles.logoutText}>로그아웃</Text>
+            </Pressable>
+            {/* App Store 5.1.1(v) — 앱 내 계정 삭제 경로가 필수 */}
+            <Pressable
+              accessibilityLabel="delete-account-btn"
+              style={styles.deleteAccountBtn}
+              onPress={onDeleteAccount}
+              disabled={deleting}
+            >
+              <Text style={styles.deleteAccountText}>
+                {deleting ? '삭제 중…' : '계정 삭제'}
+              </Text>
+            </Pressable>
+          </>
         ) : (
           <Pressable
             style={[styles.logoutBtn, { borderColor: colors.green }]}
@@ -158,6 +227,20 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: colors.divider,
+  },
+  // 계정 삭제는 로그아웃보다 시각적 비중을 낮춰 오탭을 줄인다
+  deleteAccountBtn: {
+    marginHorizontal: 20,
+    marginTop: 14,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteAccountText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.sub,
+    textDecorationLine: 'underline',
   },
   logoutBtn: {
     marginHorizontal: 20,

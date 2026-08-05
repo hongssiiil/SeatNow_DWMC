@@ -64,6 +64,7 @@ export default function RootLayout() {
           <Stack.Screen name="search" />
           <Stack.Screen name="cafe/[id]" />
           <Stack.Screen name="settings" />
+          <Stack.Screen name="privacy" />
         </Stack>
       </AppProvider>
     </GestureHandlerRootView>
