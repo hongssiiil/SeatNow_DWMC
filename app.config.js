@@ -19,6 +19,8 @@ module.exports = ({ config }) => ({
   android: {
     ...config.android,
     package: 'com.sitnow.app',
+    // FCM 클라이언트 설정 — 없으면 getExpoPushTokenAsync()가 실패해 자리 알림을 못 받는다
+    googleServicesFile: './google-services.json',
   },
   plugins: [
     ...(config.plugins ?? []),
