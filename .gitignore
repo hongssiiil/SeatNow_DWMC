@@ -44,3 +44,6 @@ example
 
 # native SDK keys
 .env
+
+# 심사용 계정 정보가 들어가는 로컬 전용 작성 시트 — 게시 금지
+docs/play-store-sheet.html
