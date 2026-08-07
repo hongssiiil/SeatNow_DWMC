@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Cafe, INITIAL_CAFES, cafeFromRow } from './data';
 import { fetchNickname, saveNickname as persistNickname } from './profile';
 import { registerPushToken, unregisterPushToken } from './pushToken';
@@ -27,6 +28,8 @@ type AppState = {
   cafes: Cafe[];
   user: User | null;
   isGuest: boolean;
+  /** 저장된 로그인 정보를 읽어봤는지. false 동안은 로그인 여부를 단정하면 안 된다 */
+  hydrated: boolean;
   bookmarks: string[];
   /** cafeId → 테이크인 횟수 (visitCounts, N>=1만) */
   visitCounts: Record<string, number>;
@@ -57,7 +60,40 @@ type AppState = {
 
 const AppContext = createContext<AppState | null>(null);
 
-const DAY = 24 * 60 * 60 * 1000;
+/**
+ * 로그인 세션 저장 키.
+ *
+ * 로그인 상태는 앱을 껐다 켜도 유지되어야 한다 — 사용자가 직접 로그아웃하거나
+ * 계정을 삭제할 때만 풀린다. 저장하는 값은 User 그대로이고, 실제 인증 토큰이
+ * 아니라 사용자 식별자·표시 정보뿐이다(카카오/Apple 세션은 각 SDK가 관리).
+ */
+const SESSION_KEY = 'sitnow.session.v1';
+
+/** 저장된 값이 User 모양인지 확인한다. 형식이 깨졌으면 무시하고 로그아웃 상태로 시작 */
+function parseStoredUser(raw: string | null): User | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    if (
+      v &&
+      typeof v.key === 'string' &&
+      v.key &&
+      typeof v.name === 'string' &&
+      (v.provider === 'kakao' || v.provider === 'apple')
+    ) {
+      return {
+        key: v.key,
+        name: v.name,
+        email: typeof v.email === 'string' ? v.email : undefined,
+        provider: v.provider,
+        joinedAt: typeof v.joinedAt === 'number' ? v.joinedAt : Date.now(),
+      };
+    }
+  } catch {
+    // 손상된 값 — 무시한다
+  }
+  return null;
+}
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [cafes, setCafes] = useState<Cafe[]>(INITIAL_CAFES);
@@ -72,6 +108,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     '콘센트 있는 카페',
   ]);
   const [now, setNow] = useState(Date.now());
+  const [hydrated, setHydrated] = useState(false);
   const userRef = useRef<User | null>(null);
   userRef.current = user;
 
@@ -181,34 +218,69 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  /**
+   * 사용자를 로그인 상태로 올린다. 새 로그인과 앱 재시작 복원이 공유한다.
+   * 저장은 하지 않는다 — 호출부가 정한다.
+   */
+  const activateUser = useCallback(
+    (u: User) => {
+      setUser(u);
+      setIsGuest(false);
+      setBookmarks([]);
+      setVisitCounts({});
+      loadBookmarks(u.key);
+      loadVisitCounts(u.key);
+      // 찜한 카페의 "자리 있어요" 푸시를 받기 위한 토큰 등록.
+      // user_key가 확정된 뒤여야 favorites와 조인이 맞는다. 실패해도 로그인은 진행.
+      void registerPushToken(u.key);
+      // 저장된 닉네임이 있으면 덮어쓰기
+      fetchNickname(u.key).then((nick) => {
+        if (!nick) return;
+        setUser((prev) => (prev && prev.key === u.key ? { ...prev, name: nick } : prev));
+      });
+    },
+    [loadBookmarks, loadVisitCounts]
+  );
+
+  // ── 저장된 로그인 복원 ────────────────────────────────────
+  // 한 번 로그인하면 로그아웃·계정 삭제 전까지 유지된다.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let stored: User | null = null;
+      try {
+        stored = parseStoredUser(await AsyncStorage.getItem(SESSION_KEY));
+      } catch (e) {
+        console.log('[store] 저장된 로그인 정보를 읽지 못했습니다', e);
+      }
+      if (cancelled) return;
+      if (stored) activateUser(stored);
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activateUser]);
+
   const login = useCallback(
     (
       provider: 'kakao' | 'apple',
       profile: { id: string; name: string; email?: string }
     ) => {
-      const key = profile.id;
-      setUser({
-        key,
+      const next: User = {
+        key: profile.id,
         name: profile.name,
         email: profile.email,
         provider,
-        joinedAt: Date.now() - 12 * DAY,
-      });
-      setIsGuest(false);
-      setBookmarks([]);
-      setVisitCounts({});
-      loadBookmarks(key);
-      loadVisitCounts(key);
-      // 찜한 카페의 "자리 있어요" 푸시를 받기 위한 토큰 등록.
-      // user_key가 확정된 뒤여야 favorites와 조인이 맞는다. 실패해도 로그인은 진행.
-      void registerPushToken(key);
-      // 저장된 닉네임이 있으면 덮어쓰기
-      fetchNickname(key).then((nick) => {
-        if (!nick) return;
-        setUser((prev) => (prev && prev.key === key ? { ...prev, name: nick } : prev));
-      });
+        joinedAt: Date.now(),
+      };
+      activateUser(next);
+      AsyncStorage.setItem(SESSION_KEY, JSON.stringify(next)).catch((e) =>
+        // 저장에 실패해도 이번 세션 로그인은 유효하다. 다음 실행 때 풀릴 뿐이다.
+        console.log('[store] 로그인 정보 저장 실패', e)
+      );
     },
-    [loadBookmarks, loadVisitCounts]
+    [activateUser]
   );
 
   const continueAsGuest = useCallback(() => {
@@ -221,6 +293,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     // 이 기기 토큰을 지우지 않으면 로그아웃 후에도 푸시가 계속 온다
     void unregisterPushToken();
+    // 저장된 세션도 함께 지운다 — 안 지우면 다음 실행에서 되살아난다
+    AsyncStorage.removeItem(SESSION_KEY).catch((e) =>
+      console.log('[store] 로그인 정보 삭제 실패', e)
+    );
     setUser(null);
     setIsGuest(false);
     setBookmarks([]);
@@ -302,6 +378,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       cafes,
       user,
       isGuest,
+      hydrated,
       bookmarks,
       visitCounts,
       recentSearches,
@@ -322,6 +399,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       cafes,
       user,
       isGuest,
+      hydrated,
       bookmarks,
       visitCounts,
       recentSearches,

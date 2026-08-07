@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,8 +19,14 @@ import { describeAuthError } from '../lib/authMessages';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login, continueAsGuest, cafes } = useApp();
+  const { login, continueAsGuest, cafes, user, hydrated } = useApp();
   const [loading, setLoading] = useState<'kakao' | 'apple' | null>(null);
+
+  // 저장된 로그인이 있으면 이 화면을 건너뛴다. 복원 전(hydrated=false)에는
+  // 로그인 여부를 알 수 없으므로 판단을 미룬다.
+  useEffect(() => {
+    if (hydrated && user) router.replace('/home');
+  }, [hydrated, user, router]);
 
   // 미리보기 배지가 '자리 있음' 고정이므로, 만석으로 알려진 가게는 hero로 쓰지 않는다.
   const heroCafe: Cafe =
@@ -30,6 +36,7 @@ export default function LoginScreen() {
 
   const enterGuest = () => {
     continueAsGuest();
+    if (router.canDismiss()) router.dismissAll();
     router.replace('/home');
   };
 
@@ -42,6 +49,8 @@ export default function LoginScreen() {
       // auth.ts가 실패를 전부 throw하므로 result는 항상 유효하다.
       // 목업 폴백이 없어야 mock: 키를 공유해 즐겨찾기·예약이 섞이는 일이 없다.
       login(provider, result);
+      // 딥링크로 쌓인 화면까지 걷어내야 뒤로가기가 로그인 화면으로 돌아가지 않는다
+      if (router.canDismiss()) router.dismissAll();
       router.replace('/home');
     } catch (e) {
       // 취소를 포함해 모든 실패를 사용자에게 알린다. 조용히 넘어가는 경로는 없다.

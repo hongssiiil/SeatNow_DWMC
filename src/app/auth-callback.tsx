@@ -57,6 +57,8 @@ export default function AuthCallbackScreen() {
         if (cancelled) return;
         // 웹 OAuth는 사용자 이름을 제공하지 않는다(Apple 사양).
         login('apple', { id: `apple:${sub}`, name: 'Apple 사용자', email });
+        // 콜백 화면이 스택에 남으면 뒤로가기가 로그인 화면으로 돌아간다
+        if (router.canDismiss()) router.dismissAll();
         router.replace('/home');
       } catch (e) {
         if (cancelled) return;
