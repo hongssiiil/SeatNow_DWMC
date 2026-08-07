@@ -175,10 +175,6 @@ export default function MyPageScreen() {
     }
   };
 
-  const daysWith = user
-    ? Math.max(1, Math.floor((now - user.joinedAt) / (24 * 60 * 60 * 1000)))
-    : 0;
-
   const openNicknameModal = () => {
     if (!user) return;
     setNickDraft(user.name);
@@ -271,21 +267,19 @@ export default function MyPageScreen() {
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{user.name.slice(0, 2)}</Text>
             </View>
-            <View style={{ flex: 1, marginLeft: 16 }}>
-              <View style={styles.nameRow}>
-                <Text style={styles.profileName}>{user.name}님</Text>
-                <Pressable
-                  accessibilityLabel="edit-nickname-btn"
-                  hitSlop={8}
-                  onPress={openNicknameModal}
-                  style={styles.editBtn}
-                >
-                  <Ionicons name="pencil" size={16} color={PRIMARY} />
-                </Pressable>
-              </View>
-              <Text style={styles.profileSub}>
-                테이크인과 함께한 지 {daysWith}일째
+            {/* 닉네임 한 줄만 두고 아바타 높이에 맞춰 세로 중앙에 놓는다 */}
+            <View style={styles.nameRow}>
+              <Text style={styles.profileName} numberOfLines={1}>
+                {user.name}님
               </Text>
+              <Pressable
+                accessibilityLabel="edit-nickname-btn"
+                hitSlop={8}
+                onPress={openNicknameModal}
+                style={styles.editBtn}
+              >
+                <Ionicons name="pencil" size={16} color={PRIMARY} />
+              </Pressable>
             </View>
             <Pressable hitSlop={8} onPress={() => router.push('/settings')}>
               <Ionicons name="chevron-forward" size={20} color={colors.sub} />
@@ -492,6 +486,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   nameRow: {
+    flex: 1,
+    marginLeft: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -505,7 +501,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   profileName: {
-    fontSize: 18,
+    flexShrink: 1,
+    fontSize: 19,
     fontWeight: '800',
     color: colors.ink,
   },

@@ -42,6 +42,21 @@ export function appleSubFromUser(user: unknown): string | null {
   return null;
 }
 
+/**
+ * 웹 로그인 창을 띄워두고 결과를 기다리는 중인지.
+ *
+ * 리다이렉트(`seatnowapp://auth-callback`)는 딥링크라서 expo-router의 화면
+ * 이동도 함께 일으킨다. 콜백 화면(app/auth-callback.tsx)은 이 플래그를 보고,
+ * 진행 중이면 아무것도 하지 않고 여기서 코드 교환을 끝내도록 양보한다.
+ * 앱이 백그라운드에서 종료돼 콜드 스타트로 돌아온 경우에는 기다리는 쪽이
+ * 없으므로 콜백 화면이 직접 교환한다.
+ */
+let webAuthInFlight = false;
+
+export function isAppleWebAuthInFlight(): boolean {
+  return webAuthInFlight;
+}
+
 /** 웹 OAuth로 Apple에 로그인하고 Apple sub를 반환한다. 실패는 전부 throw한다. */
 export async function signInWithAppleWeb(): Promise<{ sub: string; email?: string }> {
   if (!supabase) {
@@ -65,7 +80,13 @@ export async function signInWithAppleWeb(): Promise<{ sub: string; email?: strin
     fail('apple', 'PROVIDER_ERROR', 'Apple 로그인 주소를 받지 못했습니다.');
   }
 
-  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+  let result;
+  try {
+    webAuthInFlight = true;
+    result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+  } finally {
+    webAuthInFlight = false;
+  }
 
   if (result.type === 'cancel' || result.type === 'dismiss') {
     fail('apple', 'CANCELLED', '사용자가 Apple 로그인을 취소했습니다.', result);
@@ -86,6 +107,26 @@ export async function signInWithAppleWeb(): Promise<{ sub: string; email?: strin
   const code = params.code;
   if (typeof code !== 'string' || !code) {
     fail('apple', 'PROVIDER_ERROR', 'Apple 로그인 응답에 인증 코드가 없습니다.', params);
+  }
+
+  return completeAppleWebAuth(code);
+}
+
+/**
+ * 인증 코드를 세션으로 교환하고 Apple sub를 꺼낸다.
+ *
+ * 코드는 일회용이므로 한 번만 호출해야 한다. 웹 로그인 창을 기다리는 경로와
+ * 콜백 화면 중 하나만 호출한다 ([[isAppleWebAuthInFlight]] 참고).
+ */
+export async function completeAppleWebAuth(
+  code: string,
+): Promise<{ sub: string; email?: string }> {
+  if (!supabase) {
+    fail(
+      'apple',
+      'NOT_CONFIGURED',
+      'Supabase가 설정되지 않아 Apple 웹 로그인을 사용할 수 없습니다.',
+    );
   }
 
   const exchange = await supabase.auth.exchangeCodeForSession(code);

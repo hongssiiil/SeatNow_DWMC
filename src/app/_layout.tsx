@@ -65,6 +65,8 @@ export default function RootLayout() {
           <Stack.Screen name="cafe/[id]" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="privacy" />
+          {/* Apple 웹 OAuth 리다이렉트 착지 지점 — 없으면 Unmatched Route가 뜬다 */}
+          <Stack.Screen name="auth-callback" options={{ animation: 'none' }} />
         </Stack>
       </AppProvider>
     </GestureHandlerRootView>
