@@ -75,7 +75,7 @@ function matchesSeatFilter(cafe: Cafe, filter: SeatFilter): boolean {
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { cafes, now, bookmarks, toggleBookmark, user, visitCounts } = useApp();
+  const { cafes, now, bookmarks, toggleBookmark, user } = useApp();
   const mapRef = useRef<CafeMapHandle>(null);
 
   const [seatFilter, setSeatFilter] = useState<SeatFilter>('all');
@@ -380,7 +380,6 @@ export default function HomeScreen() {
               cafe={item}
               now={now}
               bookmarked={bookmarks.includes(item.id)}
-              visitCount={visitCounts[item.id] ?? 0}
               onPress={() => router.push(`/cafe/${item.id}`)}
               onToggleBookmark={() => onToggleBookmark(item)}
             />

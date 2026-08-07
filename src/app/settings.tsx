@@ -86,7 +86,7 @@ export default function SettingsScreen() {
   const onDeleteAccount = () => {
     Alert.alert(
       '계정 삭제',
-      '저장한 카페, 좋아요, 테이크인 기록이 모두 삭제되며 되돌릴 수 없어요.',
+      '저장한 카페와 좋아요 기록이 모두 삭제되며 되돌릴 수 없어요.',
       [
         { text: '취소', style: 'cancel' },
         {

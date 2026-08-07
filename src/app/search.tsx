@@ -20,7 +20,7 @@ const PRIMARY = '#1F4D3D';
 
 export default function SearchScreen() {
   const router = useRouter();
-  const { cafes, now, bookmarks, toggleBookmark, addRecentSearch, visitCounts } = useApp();
+  const { cafes, now, bookmarks, toggleBookmark, addRecentSearch } = useApp();
 
   const [mode, setMode] = useState<'form' | 'results'>('form');
   const [query, setQuery] = useState('');
@@ -79,7 +79,6 @@ export default function SearchScreen() {
               cafe={item}
               now={now}
               bookmarked={bookmarks.includes(item.id)}
-              visitCount={visitCounts[item.id] ?? 0}
               onPress={() => router.push(`/cafe/${item.id}`)}
               onToggleBookmark={() => onToggleBookmark(item)}
             />

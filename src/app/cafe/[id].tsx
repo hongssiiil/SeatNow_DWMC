@@ -14,11 +14,7 @@ import { StatusBadge } from '../../components/CafeCard';
 import { getCafeAmenityTags } from '../../constants/amenities';
 import { updatedLabel } from '../../lib/data';
 import { useSeats } from '../../lib/seats';
-import {
-  fetchLiked,
-  fetchVisitCount,
-  toggleLike,
-} from '../../lib/social';
+import { fetchLiked, toggleLike } from '../../lib/social';
 import { useApp } from '../../lib/store';
 import { colors, radius, seatStatus, statusColors, statusLabel } from '../../lib/theme';
 import { isCafeClosed } from '../../utils/isCafeOpen';
@@ -31,14 +27,10 @@ export default function CafeDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { cafes, now, bookmarks, toggleBookmark, user, live, setVisitCount: syncVisitCount } =
-    useApp();
+  const { cafes, now, bookmarks, toggleBookmark, user, live } = useApp();
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
-
-  /** visitCounts: 이 카페 테이크인 완료(PoC) 횟수 */
-  const [localVisitCount, setLocalVisitCount] = useState(0);
 
 
   const cafe = cafes.find((c) => c.id === id);
@@ -60,18 +52,11 @@ export default function CafeDetailScreen() {
     if (!cafe) return;
     if (!user) {
       setLiked(false);
-      setLocalVisitCount(0);
       return;
     }
 
-    const [isLiked, visits] = await Promise.all([
-      fetchLiked(cafe.id, user.key),
-      fetchVisitCount(cafe.id, user.key),
-    ]);
-    setLiked(isLiked);
-    setLocalVisitCount(visits);
-    syncVisitCount(cafe.id, visits);
-  }, [cafe?.id, user?.key, syncVisitCount]);
+    setLiked(await fetchLiked(cafe.id, user.key));
+  }, [cafe?.id, user?.key]);
 
   useFocusEffect(
     useCallback(() => {
@@ -179,14 +164,6 @@ export default function CafeDetailScreen() {
         </View>
 
         <View style={styles.body}>
-          {localVisitCount >= 1 && (
-            <Text
-              accessibilityLabel="visit-count-label"
-              style={styles.visitCountLabel}
-            >
-              최근 {localVisitCount}번 테이크인한 가게
-            </Text>
-          )}
           <View style={styles.titleRow}>
             <Text accessibilityLabel="cafe-name" style={styles.name}>
               {cafe.name}
@@ -328,12 +305,6 @@ const styles = StyleSheet.create({
   body: {
     paddingHorizontal: 22,
     paddingTop: 22,
-  },
-  visitCountLabel: {
-    fontSize: 12,
-    color: '#999999',
-    marginBottom: 6,
-    fontWeight: '500',
   },
   titleRow: {
     flexDirection: 'row',

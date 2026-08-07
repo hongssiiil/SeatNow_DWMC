@@ -98,7 +98,6 @@ export default function MyPageScreen() {
     bookmarks,
     toggleBookmark,
     updateNickname,
-    visitCounts,
   } = useApp();
 
   /** 저장·최근 테이크인 모두 기본 접힘 */
@@ -358,7 +357,6 @@ export default function MyPageScreen() {
                     key={cafe.id}
                     cafe={cafe}
                     now={now}
-                    visitCount={visitCounts?.[cafe.id] ?? 0}
                     onPress={() => router.push(`/cafe/${cafe.id}`)}
                     onToggleBookmark={() => toggleBookmark(cafe.id)}
                   />

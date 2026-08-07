@@ -46,20 +46,9 @@ type Props = {
   cafe: Cafe;
   now: number;
   bookmarked: boolean;
-  /** visitCounts — N>=1일 때만 라벨 표시 */
-  visitCount?: number;
   onPress: () => void;
   onToggleBookmark: () => void;
 };
-
-function VisitCountLabel({ count }: { count: number }) {
-  if (count < 1) return null;
-  return (
-    <Text accessibilityLabel="visit-count-label" style={styles.visitCountLabel}>
-      최근 {count}번 테이크인한 가게
-    </Text>
-  );
-}
 
 function ClosedOverlay() {
   return (
@@ -81,7 +70,6 @@ export function CafeCard({
   cafe,
   now,
   bookmarked,
-  visitCount = 0,
   onPress,
   onToggleBookmark,
 }: Props) {
@@ -90,7 +78,6 @@ export function CafeCard({
     <Pressable style={styles.card} onPress={onPress}>
       <View style={[styles.cardBody, closed && styles.cardDimmed]}>
         <View style={{ flex: 1 }}>
-          <VisitCountLabel count={visitCount} />
           <View style={styles.titleRow}>
             <Text style={styles.name}>{cafe.name}</Text>
             {!closed && <StatusBadge cafe={cafe} />}
@@ -131,7 +118,6 @@ export function CafeCard({
 export function SavedCafeCard({
   cafe,
   now,
-  visitCount = 0,
   onPress,
   onToggleBookmark,
 }: Omit<Props, 'bookmarked'>) {
@@ -153,7 +139,6 @@ export function SavedCafeCard({
             <Ionicons name="cafe-outline" size={24} color={colors.green} />
           </View>
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <VisitCountLabel count={visitCount} />
             <Text style={styles.name}>{cafe.name}</Text>
             <View style={[styles.metaRow, { marginTop: 4 }]}>
               <Ionicons name="location-outline" size={14} color={colors.sub} />
@@ -228,12 +213,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  visitCountLabel: {
-    fontSize: 12,
-    color: '#999999',
-    fontWeight: '500',
-    marginBottom: 4,
   },
   name: {
     fontSize: 17,
