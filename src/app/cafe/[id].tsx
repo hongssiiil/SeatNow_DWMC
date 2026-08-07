@@ -1,9 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
-  Linking,
-  Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,11 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBadge } from '../../components/CafeCard';
 import { getCafeAmenityTags } from '../../constants/amenities';
 import { updatedLabel } from '../../lib/data';
-import {
-  RESERVATION_TIMEOUT_MINUTES,
-  pickFirstAvailableSeat,
-  useSeats,
-} from '../../lib/seats';
+import { useSeats } from '../../lib/seats';
 import {
   fetchLiked,
   fetchVisitCount,
@@ -40,11 +33,6 @@ export default function CafeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { cafes, now, bookmarks, toggleBookmark, user, live, setVisitCount: syncVisitCount } =
     useApp();
-  const [reserveOpen, setReserveOpen] = useState(false);
-  /** 확인 모달에 표시할 좌석 (자동 배정된 번호) */
-  const [pendingSeat, setPendingSeat] = useState<number | null>(null);
-  const [takeInBusy, setTakeInBusy] = useState(false);
-
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [likeBusy, setLikeBusy] = useState(false);
@@ -55,7 +43,7 @@ export default function CafeDetailScreen() {
 
   const cafe = cafes.find((c) => c.id === id);
 
-  const { seats, myReservation, takeIn, cancelTakeIn } = useSeats(
+  const { seats } = useSeats(
     cafe?.id,
     {
       total: cafe?.seatsTotal ?? 0,
@@ -145,151 +133,15 @@ export default function CafeDetailScreen() {
     }
   };
 
-  /**
-   * 길찾기는 좌표로 OS 기본 지도를 연다.
-   * 특정 지도 서비스의 내부 식별자(place id)에 의존하지 않기 위해서다.
-   */
-  const onDirections = () => {
-    const label = encodeURIComponent(cafe.name);
-    const url =
-      Platform.OS === 'ios'
-        ? `https://maps.apple.com/?daddr=${cafe.lat},${cafe.lng}&q=${label}`
-        : `geo:${cafe.lat},${cafe.lng}?q=${cafe.lat},${cafe.lng}(${label})`;
-    Linking.openURL(url).catch(() => Alert.alert('길찾기를 열 수 없어요'));
-  };
-
   /** 표시용 좌석 현황 — 이 버전에서는 congestion 컬럼이 정답이다. */
   const currentSeatStatus = seatStatus(cafe.congestion);
   const seatStatusColors = statusColors(currentSeatStatus);
 
-  /**
-   * 테이크인 가능 여부.
-   * 사장님이 만석이라고 알린 가게는 좌석 수 집계와 무관하게 무조건 막는다.
-   * (seats_available은 사장님 앱이 관리하지 않아 실제 현황과 어긋난다 —
-   *  예: congestion='full'인데 seats_available=3인 가게가 실제로 존재)
-   * 만석이 아닐 때만 좌석 단위 실데이터로 판단한다.
-   */
-  const hasFreeSeat =
-    currentSeatStatus !== 'full' &&
-    (seats.some((s) => s.status === 'available') || cafe.seatsAvailable > 0);
-
-  const onReserve = () => {
-    if (isCafeClosed(cafe)) {
-      Alert.alert('휴무중이에요', '영업 시간에 다시 테이크인해 주세요.');
-      return;
-    }
-    if (!user) {
-      requireLogin('자리를 테이크인하려면 로그인해 주세요.');
-      return;
-    }
-    if (myReservation) {
-      Alert.alert(
-        '이미 테이크인 중이에요',
-        `${myReservation.label} 좌석을 테이크인 중입니다. 취소 후 다시 시도해 주세요.`
-      );
-      return;
-    }
-    if (!hasFreeSeat) {
-      Alert.alert('만석이에요', '자리가 나면 다시 시도해 주세요.');
-      return;
-    }
-    const seatNo = pickFirstAvailableSeat(seats)?.seatNo ?? null;
-    if (seatNo == null) {
-      Alert.alert('만석이에요', '자리가 나면 다시 시도해 주세요.');
-      return;
-    }
-    setPendingSeat(seatNo);
-    setReserveOpen(true);
-  };
-
-  const onCancelTakeIn = () => {
-    if (!user || !myReservation || takeInBusy) return;
-    Alert.alert(
-      '테이크인 취소',
-      `${myReservation.label} 좌석 테이크인을 취소할까요?`,
-      [
-        { text: '닫기', style: 'cancel' },
-        {
-          text: '취소하기',
-          style: 'destructive',
-          onPress: async () => {
-            setTakeInBusy(true);
-            const ok = await cancelTakeIn(user.key);
-            setTakeInBusy(false);
-            if (!ok) {
-              Alert.alert('취소 실패', '잠시 후 다시 시도해 주세요.');
-              return;
-            }
-            const next = Math.max(0, localVisitCount - 1);
-            setLocalVisitCount(next);
-            syncVisitCount(cafe.id, next);
-            Alert.alert('취소됐어요', '좌석이 다시 자리 있음으로 변경됐어요.');
-          },
-        },
-      ]
-    );
-  };
-
-  const onPrimaryCta = () => {
-    if (myReservation) {
-      onCancelTakeIn();
-      return;
-    }
-    onReserve();
-  };
-
-  const confirmReserve = async () => {
-    if (!user || takeInBusy) return;
-    const seatNo = pendingSeat ?? pickFirstAvailableSeat(seats)?.seatNo ?? null;
-    if (seatNo == null) {
-      setReserveOpen(false);
-      Alert.alert('만석이에요', '자리가 나면 다시 시도해 주세요.');
-      return;
-    }
-    setReserveOpen(false);
-    setTakeInBusy(true);
-    const result = await takeIn(seatNo, user.key);
-    setTakeInBusy(false);
-    if (!result.ok) {
-      const msg =
-        result.error === 'already_reserved'
-          ? '이미 테이크인 중인 좌석이 있어요.'
-          : result.error === 'seat_unavailable'
-            ? '방금 다른 분이 테이크인한 좌석이에요. 다른 자리를 골라 주세요.'
-            : '잠시 후 다시 시도해 주세요.';
-      Alert.alert('테이크인 실패', msg);
-      return;
-    }
-    // 체크인(GPS 방문 인증)과 별개 — 리뷰 자격은 체크인으로만 부여
-    // setState updater 안에서 syncVisitCount(컨텍스트 setState) 호출하면 런타임 에러 남
-    const next = localVisitCount + 1;
-    setLocalVisitCount(next);
-    syncVisitCount(cafe.id, next);
-    Alert.alert(
-      '테이크인 완료',
-      `${cafe.name} ${seatNo}번 좌석이 테이크인됐어요.\n${RESERVATION_TIMEOUT_MINUTES}분 안에 착석해 주세요!`
-    );
-    setPendingSeat(null);
-  };
-
   const closed = isCafeClosed(cafe);
-
-  // CTA: 테이크인 하기 ↔ 테이크인 취소만 (리뷰는 마이페이지 recent-takein)
-  const ctaLabel = myReservation
-    ? '테이크인 취소'
-    : closed
-      ? '휴무중'
-      : hasFreeSeat
-        ? '테이크인 하기'
-        : '만석이에요';
-
-  const ctaDisabled = myReservation
-    ? takeInBusy
-    : closed || takeInBusy || !hasFreeSeat;
 
   return (
     <View style={styles.safe}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
         <View style={[styles.hero, { paddingTop: insets.top + 8 }]}>
           <View style={styles.heroRow}>
             <Pressable style={styles.circleBtn} onPress={() => router.back()}>
@@ -351,11 +203,11 @@ export default function CafeDetailScreen() {
             <Text style={styles.meta}>{updatedLabel(cafe.lastUpdated, now)}</Text>
           </View>
 
-          <Pressable style={styles.addressRow} onPress={onDirections}>
-            <Ionicons name="navigate-outline" size={17} color={colors.green} />
+          {/* 길찾기 제거 — 주소는 정보로만 표시한다 */}
+          <View style={styles.addressRow}>
+            <Ionicons name="location-outline" size={17} color={colors.sub} />
             <Text style={styles.address}>{cafe.address}</Text>
-            <Text style={styles.directions}>길찾기 ›</Text>
-          </Pressable>
+          </View>
 
           <Text style={styles.sectionTitle}>편의시설</Text>
           <View style={styles.tagWrap}>
@@ -418,56 +270,6 @@ export default function CafeDetailScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
-        <Pressable
-          accessibilityLabel={myReservation ? 'cancel-takein-btn' : 'takein-btn'}
-          style={[
-            styles.reserveBtn,
-            ctaDisabled && styles.reserveBtnDisabled,
-            closed && !myReservation && styles.reserveBtnClosed,
-            myReservation && styles.cancelTakeinBtn,
-          ]}
-          onPress={onPrimaryCta}
-          disabled={ctaDisabled}
-        >
-          <Text style={styles.reserveText}>{ctaLabel}</Text>
-        </Pressable>
-      </View>
-
-      <Modal visible={reserveOpen} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Ionicons name="cafe" size={34} color={colors.green} />
-            <Text style={styles.modalTitle}>{cafe.name}</Text>
-            <Text style={styles.modalSub}>
-              {/* 좌석 선택 UI가 없으므로 항상 빈 좌석이 자동 배정된다 */}
-              {pendingSeat != null
-                ? `빈 좌석(${pendingSeat}번)을 자동으로 테이크인할까요?`
-                : '빈 좌석 하나를 자동으로 테이크인할까요?'}
-              {'\n'}
-              {RESERVATION_TIMEOUT_MINUTES}분 안에 착석하지 않으면 자동 취소돼요.
-              {'\n'}도착 예상: 도보 {cafe.walkMin}분
-            </Text>
-            <View style={styles.modalBtns}>
-              <Pressable
-                style={[styles.modalBtn, styles.modalBtnGhost]}
-                onPress={() => {
-                  setReserveOpen(false);
-                  setPendingSeat(null);
-                }}
-              >
-                <Text style={[styles.modalBtnText, { color: colors.ink }]}>취소</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.modalBtn, { backgroundColor: colors.green }]}
-                onPress={confirmReserve}
-              >
-                <Text style={[styles.modalBtnText, { color: colors.white }]}>확인</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -573,11 +375,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: colors.text,
-  },
-  directions: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.green,
   },
   sectionTitle: {
     fontSize: 18,
@@ -744,86 +541,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: colors.text,
-  },
-  bottomBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    backgroundColor: colors.bg,
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
-  },
-  reserveBtn: {
-    height: 56,
-    borderRadius: radius.pill,
-    backgroundColor: colors.green,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reserveBtnDisabled: {
-    backgroundColor: colors.sage,
-  },
-  reserveBtnClosed: {
-    backgroundColor: '#CCCCCC',
-  },
-  cancelTakeinBtn: {
-    backgroundColor: '#5B8DEF',
-  },
-  reserveText: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: colors.white,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  modalCard: {
-    width: '100%',
-    backgroundColor: colors.white,
-    borderRadius: radius.xl,
-    padding: 26,
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.ink,
-    marginTop: 12,
-  },
-  modalSub: {
-    fontSize: 14,
-    lineHeight: 22,
-    color: colors.sub,
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  modalBtns: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 22,
-    alignSelf: 'stretch',
-  },
-  modalBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBtnGhost: {
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  modalBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
   },
 });
