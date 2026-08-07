@@ -15,7 +15,7 @@ import { fetchAllVisitCounts } from './social';
 import { CafeRow, supabase } from './supabase';
 
 export type User = {
-  /** 즐겨찾기·예약 저장 키 (kakao:123 / apple:xxx). 목업 로그인은 mock 키 */
+  /** 즐겨찾기·예약 저장 키 (kakao:123 / apple:xxx) */
   key: string;
   name: string;
   email?: string;
@@ -36,7 +36,7 @@ type AppState = {
   live: boolean;
   login: (
     provider: 'kakao' | 'apple',
-    profile: { id?: string; name: string; email?: string }
+    profile: { id: string; name: string; email?: string }
   ) => void;
   continueAsGuest: () => void;
   logout: () => void;
@@ -184,10 +184,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     (
       provider: 'kakao' | 'apple',
-      profile: { id?: string; name: string; email?: string }
+      profile: { id: string; name: string; email?: string }
     ) => {
-      // id가 없으면 provider별 공유 키로 묶여 데이터가 섞이므로 provider 단독 키를 쓰지 않는다
-      const key = profile.id ?? `${provider}:unknown`;
+      const key = profile.id;
       setUser({
         key,
         name: profile.name,
