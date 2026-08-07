@@ -3,6 +3,7 @@ import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Notifications from 'expo-notifications';
+import * as SplashScreen from 'expo-splash-screen';
 import { initKakao } from '../lib/auth';
 import {
   cafeIdFromNotification,
@@ -13,11 +14,30 @@ import { colors } from '../lib/theme';
 
 configureNotificationHandler();
 
+/**
+ * 스플래시를 로고가 읽힐 만큼만 띄운다.
+ *
+ * 기본 동작은 JS가 준비되는 즉시 사라지는 것이라, 기기가 빠르면 로고가
+ * 번쩍이고 만다. 자동 숨김을 막아두고 아래에서 직접 내린다.
+ */
+const SPLASH_MIN_MS = 1200;
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // 이미 숨겨졌거나 스플래시가 없는 환경 — 무시해도 앱 동작에 영향 없다
+});
+SplashScreen.setOptions({ duration: 300, fade: true });
+
 export default function RootLayout() {
   const router = useRouter();
 
   useEffect(() => {
     initKakao();
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, SPLASH_MIN_MS);
+    return () => clearTimeout(t);
   }, []);
 
   // 알림 탭 → 해당 카페 상세로 이동.
